@@ -11,6 +11,7 @@ import { StatsRepo } from "./stats.ts";
 import { AuditRepo } from "./audit.ts";
 import { NotifyRepo } from "./notify.ts";
 import { CdkRepo } from "./cdk.ts";
+import { GoldTransfersRepo } from "./gold-transfers.ts";
 
 export type Repos = {
   transaction: <T>(fn: () => T) => T;
@@ -25,6 +26,7 @@ export type Repos = {
   audit: AuditRepo;
   notify: NotifyRepo;
   cdk: CdkRepo;
+  goldTransfers: GoldTransfersRepo;
 };
 
 export function createRepos(db: Db): Repos {
@@ -41,6 +43,7 @@ export function createRepos(db: Db): Repos {
     audit: new AuditRepo(db),
     notify: new NotifyRepo(db),
     cdk: new CdkRepo(db),
+    goldTransfers: new GoldTransfersRepo(db),
   };
 }
 

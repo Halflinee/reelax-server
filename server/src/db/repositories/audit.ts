@@ -33,6 +33,8 @@ export const AUDIT_ACTIONS = {
   ACCOUNT_DELETED: "account.deleted",
   ACCOUNT_STARTED: "account.started",
   ACCOUNT_STOPPED: "account.stopped",
+  GOLD_TRANSFER_CONFIRMED: "account.gold_transfer.confirmed",
+  GOLD_TRANSFER_CLOSED: "account.gold_transfer.closed",
   /** 手动换图（界面上点「切换到某张地图」） */
   ACCOUNT_TRAVEL: "account.travel",
   /** 船队操作：加入 / 离开 / 回应邀请 */

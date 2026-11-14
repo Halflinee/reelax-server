@@ -26,9 +26,10 @@ const gearSchema = z.object({
 const inventorySchema = z.object({ gear: z.array(gearSchema), nextCursor: z.string().min(1).nullish() });
 
 export type TradePreviewInput = { payerAccountId: string; receiverAccountId: string; amount: number };
-type PreviewAccount = { accountId: string; label: string; nickname: string; gold: number };
+type PreviewAccount = { accountId: string; playerId: string; label: string; nickname: string; gold: number };
 export type TradePreview = {
   createdAt: number;
+  baseUrl: string;
   payer: PreviewAccount;
   receiver: PreviewAccount;
   requestedGold: number;
@@ -43,6 +44,7 @@ export type TradePreview = {
   candidateCount: number;
   scannedGearCount: number;
   issues: string[];
+  confirmation?: { id: string; expiresAt: number };
 };
 
 function readGameData<T>(schema: z.ZodType<T>, raw: unknown, label: string): T {
@@ -73,7 +75,7 @@ export class TradePreviewService {
     this.registry = deps.registry;
   }
 
-  async preview(userId: string, input: TradePreviewInput): Promise<TradePreview> {
+  async preview(userId: string, input: TradePreviewInput, candidateId?: string): Promise<TradePreview> {
     // 两个账号都必须先通过归属校验，再允许任何游戏请求。
     const payer = this.accounts.getForUser(input.payerAccountId, userId);
     const receiver = this.accounts.getForUser(input.receiverAccountId, userId);
@@ -109,16 +111,18 @@ export class TradePreviewService {
       return { ...item, minimumPrice: rule.effectiveBaseMinimumUnitPrice };
     }).filter((item) => item.minimumPrice <= amounts.grossGold)
       .sort((a, b) => a.sellValue - b.sellValue || rarityRank(a.rarity) - rarityRank(b.rarity) || a.id.localeCompare(b.id));
-    const candidate = candidates[0];
+    const candidate = candidateId ? candidates.find((item) => item.id === candidateId) : candidates[0];
     const issues: string[] = [];
     if (payerPlayer.gold < amounts.grossGold) issues.push(`付款账号金币不足，还差 ${(amounts.grossGold - payerPlayer.gold).toLocaleString("zh-CN")} 金币。`);
     if (config.activeOrderCount >= config.maxActiveOrdersPerPlayer) issues.push("收款账号的市场挂单数量已达上限。");
     if (!available.length) issues.push("收款账号没有无需验证码、未穿戴、未锁定且未上架的可用装备。");
     else if (!candidate) issues.push("输入金额低于现有装备的最低售价要求，请调高金额或更换收款账号。");
+    if (candidateId && !candidate) issues.push("预览中确认的装备已变化或不可用，请重新生成预览。");
     return {
       createdAt: Date.now(),
-      payer: { accountId: payer.id, label: payer.label, nickname: payerPlayer.nickname, gold: payerPlayer.gold },
-      receiver: { accountId: receiver.id, label: receiver.label, nickname: receiverPlayer.nickname, gold: receiverPlayer.gold },
+      baseUrl: payer.baseUrl,
+      payer: { accountId: payer.id, playerId: payerPlayer.id, label: payer.label, nickname: payerPlayer.nickname, gold: payerPlayer.gold },
+      receiver: { accountId: receiver.id, playerId: receiverPlayer.id, label: receiver.label, nickname: receiverPlayer.nickname, gold: receiverPlayer.gold },
       requestedGold: input.amount, ...amounts, feeBasisPoints: config.sellerFeeBasisPoints,
       candidate: candidate ? {
         id: candidate.id, name: candidate.name, rarityLabel: rarityLabel(candidate.rarity), quality: candidate.quality,

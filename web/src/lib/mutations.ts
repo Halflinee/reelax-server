@@ -8,6 +8,21 @@ import { ACCOUNTS_QUERY_KEY, MODULES_QUERY_KEY, PROXIES_QUERY_KEY } from "./quer
 import type { SwapExecuteResult, SwapState } from "./queries.ts";
 import type { TradePreview, TradePreviewInput } from "./queries.ts";
 import type { MasteryTransferPreview } from "./queries.ts";
+import type { GoldTransfer } from "./queries.ts";
+
+export function useGoldTransferAction(action: "confirm" | "check" | "close") {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<GoldTransfer>(`/api/trade-preview/operations/${id}/${action}`, { confirmed: true }),
+    retry: false,
+    onSuccess: (operation) => { client.setQueryData(["gold-transfer", operation.id], operation); },
+    onSettled: (_data, _error, id) => {
+      void client.invalidateQueries({ queryKey: ["gold-transfer", id] });
+      void client.invalidateQueries({ queryKey: ["gold-transfer-history"] });
+      void client.invalidateQueries({ queryKey: ACCOUNTS_QUERY_KEY });
+    },
+  });
+}
 
 export function useMasteryTransferPreview() {
   return useMutation({

@@ -27,8 +27,8 @@ export type MasteryTransferPreview = {
 };
 export type TradePreview = {
   createdAt: number;
-  payer: { accountId: string; label: string; nickname: string; gold: number };
-  receiver: { accountId: string; label: string; nickname: string; gold: number };
+  payer: { accountId: string; playerId: string; label: string; nickname: string; gold: number };
+  receiver: { accountId: string; playerId: string; label: string; nickname: string; gold: number };
   requestedGold: number;
   grossGold: number;
   feeGold: number;
@@ -41,7 +41,34 @@ export type TradePreview = {
   candidateCount: number;
   scannedGearCount: number;
   issues: string[];
+  confirmation?: { id: string; expiresAt: number };
 };
+
+export type GoldTransfer = {
+  id: string;
+  status: "previewed" | "executing" | "completed" | "failed" | "review_required" | "closed";
+  preview: TradePreview;
+  message: string;
+  orderId: string | null;
+  settlement: { tradeId: string; grossGold: number; feeGold: number; netGold: number } | null;
+  expiresAt: number; createdAt: number; updatedAt: number;
+};
+
+export function useGoldTransfer(id: string | null) {
+  return useQuery({
+    queryKey: ["gold-transfer", id],
+    queryFn: () => api.get<GoldTransfer>(`/api/trade-preview/operations/${id}`),
+    enabled: !!id, retry: false,
+    refetchInterval: (query) => {
+      const operation = query.state.data;
+      return operation?.status === "executing" || (operation?.status === "previewed" && operation.expiresAt > Date.now()) ? 1000 : false;
+    },
+  });
+}
+export function useGoldTransferHistory() {
+  return useQuery({ queryKey: ["gold-transfer-history"], queryFn: () => api.get<GoldTransfer[]>("/api/trade-preview/operations"),
+    refetchInterval: (query) => query.state.data?.some((op) => op.status === "executing") ? 2000 : false });
+}
 
 /* ---------- 账号 ---------- */
 

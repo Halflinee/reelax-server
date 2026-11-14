@@ -156,6 +156,12 @@ export function describeAudit(row: AuditLike, r: AuditResolvers = {}): string {
     }
     case "account.credentials.updated":
       return `更新账号${accountText(target ?? "", r)}的登录凭证`;
+    case "account.gold_transfer.confirmed": {
+      const detail = detailObject(row);
+      return `确认从账号${accountText(String(detail.payer ?? ""), r)}向账号${accountText(String(detail.receiver ?? ""), r)}支付 ${String(detail.grossGold ?? "")} 金币`;
+    }
+    case "account.gold_transfer.closed":
+      return `人工核对后结束金币集中记录 ${target ?? ""}`;
 
     // ---- 交换助手（专精换鱼） ----
     case "account.swap.scan":

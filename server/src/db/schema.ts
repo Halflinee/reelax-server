@@ -329,6 +329,23 @@ ALTER TABLE barter_tasks ADD COLUMN target_specs_json TEXT NOT NULL DEFAULT '';
 DROP TABLE barter_tasks;
 `,
   },
+  {
+    id: "0011_gold_transfers",
+    sql: `
+CREATE TABLE gold_transfers (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  payer_player_id TEXT NOT NULL,
+  receiver_player_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX idx_gold_transfers_user ON gold_transfers(user_id, created_at DESC);
+`,
+  },
 ];
 
 /** 供 migrate.ts 记录已应用版本 */

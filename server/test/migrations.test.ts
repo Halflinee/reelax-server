@@ -10,8 +10,27 @@
 //   改了已发布的迁移，测试就会红，并告诉你要新建一条迁移。
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { MIGRATIONS } from "../src/db/schema.ts";
+import { MIGRATIONS, MIGRATION_TABLE } from "../src/db/schema.ts";
 import { openDb } from "../src/db/client.ts";
+import { createRepos } from "../src/db/repositories/index.ts";
+
+it("旧数据库新增交易记录表时保留原有用户和账号", () => {
+  const db = openDb(":memory:");
+  try {
+    db.exec(MIGRATION_TABLE);
+    for (const migration of MIGRATIONS.filter((item) => item.id !== "0011_gold_transfers")) {
+      db.exec(migration.sql);
+      db.run("INSERT INTO _migrations(id,applied_at) VALUES(?,?)", migration.id, Date.now());
+    }
+    const repos = createRepos(db);
+    const user = repos.users.create({ email: "migration-test@example.com", passwordHash: "test-placeholder", displayName: "保留的用户", status: "approved" });
+    const account = repos.accounts.create({ userId: user.id, label: "保留的账号", authType: "cookie", email: "", baseUrl: "https://reelax.cn" });
+    expect(db.migrate().applied).toEqual(["0011_gold_transfers"]);
+    expect(repos.users.findById(user.id)?.display_name).toBe("保留的用户");
+    expect(repos.accounts.findById(account.id)?.label).toBe("保留的账号");
+    expect(db.get("SELECT name FROM sqlite_master WHERE name='gold_transfers'")).toBeDefined();
+  } finally { db.close(); }
+});
 
 /**
  * 已发布迁移的 SQL 校验和（前 16 位）。
@@ -31,6 +50,7 @@ const FROZEN_CHECKSUMS: Record<string, string> = {
   "0008_barter_tasks": "11d6b1a7131ba805",
   "0009_barter_task_specs": "fef9c07e60f8df7b",
   "0010_drop_barter_tasks": "dbf7dba8a9a21b4a",
+  "0011_gold_transfers": "fa8b9b12b463127d",
 };
 
 function checksum(sql: string): string {

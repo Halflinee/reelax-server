@@ -547,6 +547,22 @@ export class GameClient {
   marketConfig() {
     return this.request("/api/market/config");
   }
+  marketGearOrder(gearId: string, limitUnitPrice: number, key: string) {
+    return this.request("/api/market/orders", {
+      method: "POST", body: { assetType: "gear", side: "sell", gearId, limitUnitPrice }, headers: { "Idempotency-Key": key },
+    });
+  }
+  marketPurchase(orderId: string, key: string) {
+    return this.request(`/api/market/orders/${encodeURIComponent(orderId)}/purchase`, { method: "POST", headers: { "Idempotency-Key": key } });
+  }
+  marketOwnGearOrders(cursor?: string) {
+    const query = new URLSearchParams({ assetType: "gear", status: "active", limit: "50" });
+    if (cursor) query.set("cursor", cursor);
+    return this.request(`/api/market/me/orders?${query}`);
+  }
+  marketGearTrades() {
+    return this.request("/api/market/me/trades?assetType=gear&limit=50");
+  }
   gearSell(gearIds: string[]) {
     return this.request("/api/inventory/gear/sell", { method: "POST", body: { gearIds }, idempotent: true });
   }

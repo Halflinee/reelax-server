@@ -204,7 +204,7 @@ describe("交易预览 API：权限、实时数据和只读边界", () => {
     expect((response.body as any).error.code).toBe("INVENTORY_INCOMPLETE");
   });
 
-  it("未提供成交或确认执行路由", async () => {
+  it("没有跳过已保存预览、直接指定金额或订单的成交入口", async () => {
     const fixture = setup();
     expect((await app.post("/api/trade-preview", {}, fixture.user.jar)).status).toBe(404);
     expect((await app.post("/api/trade-preview/execute", {}, fixture.user.jar)).status).toBe(404);

@@ -180,7 +180,7 @@ export async function buildFullApp(
       a.use("/api/modules", createModulesRouter({ notify, hasUsableChannel: () => notifyAvailable }));
       a.use("/api/notify", createNotifyRouter({ notify, audit: repos.audit, limiters }));
       a.use("/api/accounts", createAccountsRouter({ accounts, registry, audit: repos.audit, swap }));
-      a.use("/api/trade-preview", createTradePreviewRouter({ accounts, registry }));
+      a.use("/api/trade-preview", createTradePreviewRouter({ accounts, registry, repos }));
       a.use("/api/mastery-transfer-preview", createMasteryTransferPreviewRouter({ accounts, registry }));
       a.use(
         "/api/game-launch",

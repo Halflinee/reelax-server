@@ -8,7 +8,7 @@
 //    两份由 test/changelog-json.test.ts 钉住不许漂移。
 //
 // 当前版本（与 package.json 的 version 同步维护）
-export const VERSION = "1.24.4";
+export const VERSION = "1.24.5";
 
 export type ChangeKind = "feature" | "improve" | "fix";
 
@@ -23,6 +23,21 @@ export type ChangelogEntry = {
 };
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.24.5",
+    date: "2026-11-14",
+    title: "金币集中支持预览后手动确认交易",
+    changes: [
+      {
+        kind: "feature",
+        text: "「金币交易预览」升级为「金币集中」：先预览付款和收款账号、装备及金额，再手动确认上架并购买指定订单。交易前重新核对条件，双方实际成交记录和金额一致后才显示完成",
+      },
+      {
+        kind: "improve",
+        text: "新增持久化交易记录、重复确认保护和异常核对。超时或重启后结果不明确时停止自动操作；可核对成交结果，或在游戏内核对并处理挂单后手动结束记录，不自动补转或重新购买",
+      },
+    ],
+  },
   {
     version: "1.24.4",
     date: "2026-11-14",
