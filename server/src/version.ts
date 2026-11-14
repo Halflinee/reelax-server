@@ -8,7 +8,7 @@
 //    两份由 test/changelog-json.test.ts 钉住不许漂移。
 //
 // 当前版本（与 package.json 的 version 同步维护）
-export const VERSION = "1.24.2";
+export const VERSION = "1.24.3";
 
 export type ChangeKind = "feature" | "improve" | "fix";
 
@@ -23,6 +23,21 @@ export type ChangelogEntry = {
 };
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.24.3",
+    date: "2026-11-14",
+    title: "新增金币交易预览",
+    changes: [
+      {
+        kind: "feature",
+        text: "新增「金币交易预览」：选择付款和收款账号，输入希望到账的金币数量，读取双方余额、实时市场税率和装备背包，展示预计支付、手续费、实际到账与候选装备；仅生成预览，不上架、不购买、不扣金币",
+      },
+      {
+        kind: "improve",
+        text: "预览会排除穿戴、锁定、已上架、永久绑定和需要验证码的装备，并提示余额不足、挂单额度已满或金额低于最低售价等情况",
+      },
+    ],
+  },
   {
     version: "1.24.2",
     date: "2026-11-02",

@@ -6,6 +6,15 @@ import { toast } from "sonner";
 import { api, ApiError } from "./api.ts";
 import { ACCOUNTS_QUERY_KEY, MODULES_QUERY_KEY, PROXIES_QUERY_KEY } from "./queries.ts";
 import type { SwapExecuteResult, SwapState } from "./queries.ts";
+import type { TradePreview, TradePreviewInput } from "./queries.ts";
+
+/** 用户主动读取一次预览；实际发送 GET，不触发任何游戏交易。 */
+export function useTradePreview() {
+  return useMutation({
+    mutationFn: (input: TradePreviewInput) => api.get<TradePreview>("/api/trade-preview", input),
+    retry: false,
+  });
+}
 
 /** 「换 N 条」的入参：数量 + 筛选（都不填 = 全部） */
 export type SwapRunInput = {

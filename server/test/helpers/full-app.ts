@@ -19,6 +19,7 @@ import { Bus } from "../../src/lib/bus.ts";
 import { createApp } from "../../src/api/server.ts";
 import { createAuthRouter } from "../../src/api/routes/auth.ts";
 import { createAccountsRouter } from "../../src/api/routes/accounts.ts";
+import { createTradePreviewRouter } from "../../src/api/routes/trade-preview.ts";
 import { createGameLaunchRouter } from "../../src/api/routes/game-launch.ts";
 import { createProxiesRouter } from "../../src/api/routes/proxy-routes.ts";
 import { createModulesRouter } from "../../src/api/routes/modules.ts";
@@ -178,6 +179,7 @@ export async function buildFullApp(
       a.use("/api/modules", createModulesRouter({ notify, hasUsableChannel: () => notifyAvailable }));
       a.use("/api/notify", createNotifyRouter({ notify, audit: repos.audit, limiters }));
       a.use("/api/accounts", createAccountsRouter({ accounts, registry, audit: repos.audit, swap }));
+      a.use("/api/trade-preview", createTradePreviewRouter({ accounts, registry }));
       a.use(
         "/api/game-launch",
         createGameLaunchRouter({ accounts, audit: repos.audit, gameOrigin: env.baseUrl }),

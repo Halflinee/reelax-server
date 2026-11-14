@@ -11,6 +11,25 @@ export const ACCOUNTS_QUERY_KEY = ["accounts"] as const;
 export const PROXIES_QUERY_KEY = ["proxies"] as const;
 export const MODULES_QUERY_KEY = ["modules"] as const;
 
+export type TradePreviewInput = { payerAccountId: string; receiverAccountId: string; amount: number };
+export type TradePreview = {
+  createdAt: number;
+  payer: { accountId: string; label: string; nickname: string; gold: number };
+  receiver: { accountId: string; label: string; nickname: string; gold: number };
+  requestedGold: number;
+  grossGold: number;
+  feeGold: number;
+  netGold: number;
+  feeBasisPoints: number;
+  candidate: {
+    id: string; name: string; rarityLabel: string; quality: number; upgradeLevel: number;
+    minimumPrice: number; sellValue: number;
+  } | null;
+  candidateCount: number;
+  scannedGearCount: number;
+  issues: string[];
+};
+
 /* ---------- 账号 ---------- */
 
 export type AccountStatus = "stopped" | "starting" | "online" | "reconnecting" | "error" | "expired";

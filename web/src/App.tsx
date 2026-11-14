@@ -30,6 +30,7 @@ const ProxiesPage = lazy(() => import("./pages/Proxies.tsx"));
 const NotifyPage = lazy(() => import("./pages/Notify.tsx"));
 const CdkPage = lazy(() => import("./pages/Cdk.tsx"));
 const SwapPage = lazy(() => import("./pages/Swap.tsx"));
+const TradePreviewPage = lazy(() => import("./pages/TradePreview.tsx"));
 const LogsPage = lazy(() => import("./pages/Logs.tsx"));
 const SettingsPage = lazy(() => import("./pages/Settings.tsx"));
 const AboutPage = lazy(() => import("./pages/About.tsx"));
@@ -105,6 +106,7 @@ export default function App() {
           <Route path="/dashboard" element={<Navigate to="/accounts" replace />} />
           <Route path="/proxies" element={userOnly(createElement(ProxiesPage))} />
           <Route path="/swap" element={userOnly(createElement(SwapPage))} />
+          <Route path="/trade-preview" element={userOnly(createElement(TradePreviewPage))} />
           <Route path="/notify" element={userOnly(createElement(NotifyPage))} />
           <Route path="/cdk" element={userOnly(createElement(CdkPage))} />
           <Route path="/logs" element={userOnly(createElement(LogsPage))} />

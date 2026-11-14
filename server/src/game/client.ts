@@ -543,6 +543,10 @@ export class GameClient {
   gearInventory(cursor?: string) {
     return this.request("/api/inventory/gear" + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""));
   }
+  /** 市场实时配置：手续费、最低售价和当前挂单额度（只读）。 */
+  marketConfig() {
+    return this.request("/api/market/config");
+  }
   gearSell(gearIds: string[]) {
     return this.request("/api/inventory/gear/sell", { method: "POST", body: { gearIds }, idempotent: true });
   }

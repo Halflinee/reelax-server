@@ -33,6 +33,7 @@ import { bootstrapModules } from "./modules/bootstrap.ts";
 import { upgradeModuleConfigs } from "./modules/config-upgrades.ts";
 import { createAuthRouter } from "./api/routes/auth.ts";
 import { createAccountsRouter } from "./api/routes/accounts.ts";
+import { createTradePreviewRouter } from "./api/routes/trade-preview.ts";
 import { createGameLaunchRouter } from "./api/routes/game-launch.ts";
 import { createProxiesRouter } from "./api/routes/proxy-routes.ts";
 import { createModulesRouter } from "./api/routes/modules.ts";
@@ -446,6 +447,7 @@ async function main(): Promise<void> {
       a.use("/api/modules", createModulesRouter({ notify }));
       a.use("/api/notify", createNotifyRouter({ notify, audit: repos.audit, limiters }));
       a.use("/api/accounts", createAccountsRouter({ accounts, registry, audit: repos.audit, swap }));
+      a.use("/api/trade-preview", createTradePreviewRouter({ accounts, registry }));
       a.use(
         "/api/game-launch",
         createGameLaunchRouter({ accounts, audit: repos.audit, gameOrigin: env.baseUrl }),
