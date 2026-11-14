@@ -1,0 +1,7 @@
+# 个人 Fork 的镜像配置；docker compose 默认会合并此文件。
+# 沿用主配置中的项目名、数据卷、端口和 .env，不迁移或清空账号数据。
+services:
+  app:
+    image: ghcr.io/halflinee/reelax-server:latest
+    environment:
+      REELAX_REPO: Halflinee/reelax-server

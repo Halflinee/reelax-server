@@ -4,6 +4,7 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  workflow_dispatch:
 
 # 只读权限：CI 不需要写仓库
 permissions:
@@ -54,6 +55,7 @@ jobs:
           cp .env.example .env
           sed -i 's|^MASTER_KEY=$|MASTER_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef|' .env
           docker compose -f docker-compose.yml config -q
+          docker compose -f docker-compose.yml -f docker-compose.override.yml config -q
           rm -f .env
 
       - name: 镜像冒烟运行（健康检查 + 鉴权）
@@ -136,12 +138,12 @@ jobs:
   #     docker compose pull app && docker compose up -d
   # 而且镜像里烧进了提交号（APP_COMMIT）→ 面板的「当前版本」永远读得到。
   #
-  # 只在 main 的 push 上跑（PR 不推）；needs: verify → 校验不过的提交绝不发布。
+  # main 的 push 或手动运行时发布（PR 不推）；校验不过的提交绝不发布。
   # ---------------------------------------------------------------------------
   publish:
     name: 构建并推送镜像（GHCR）
     needs: verify
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
