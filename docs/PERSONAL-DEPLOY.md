@@ -108,15 +108,36 @@ curl -f http://127.0.0.1:8580/api/health
 
 1. 在电脑上修改、检查、提交并推送代码。
 2. 等自己的 GitHub Actions 检查和镜像发布成功。
-3. 在 OrcaTerm 进入 `/opt/reelax-server`，按上面的方式先备份配置与完整数据。
-4. 执行：
+3. 在 OrcaTerm 执行一次 `sudo reelax-update`，自动下载、备份、更新并检查。
+
+### 一次性安装更新命令
+
+已经切换到个人镜像的服务器，在 OrcaTerm 执行以下整段。安装本身不会重启程序。
 
 ```bash
-docker compose pull app && docker compose up -d --no-build app
-curl -f http://127.0.0.1:8580/api/health
+(
+set -eu
+script_file=$(mktemp)
+trap 'rm -f "$script_file"' EXIT
+curl -fL https://raw.githubusercontent.com/Halflinee/reelax-server/main/scripts/update-image.sh -o "$script_file"
+bash -n "$script_file"
+sudo install -o root -g root -m 755 "$script_file" /usr/local/sbin/reelax-update
+echo "安装完成，以后执行 sudo reelax-update"
+)
 ```
 
-因为个人覆盖配置会被自动读取，这里拉取的是自己的镜像。
-显式执行 `docker compose -f docker-compose.yml ...` 会忽略覆盖文件，重新使用主配置中的作者镜像；日常更新使用上面的普通命令。
+以后每次更新只运行：
+
+```bash
+sudo reelax-update
+```
+
+脚本先下载 `ghcr.io/halflinee/reelax-server:latest`，下载失败不会停止原程序。下载完成后保存 `.env`、两份 Compose 配置和旧镜像 ID，暂停 `app`，复制完整 `/app/data`（数据库、账号配置、日志、微信凭证等），随后启动新版并检查健康接口。Caddy 不重启。
+
+备份保存在 `/root/reelax-backups/日期时间-随机后缀/`，目录中的 `backup.complete` 表示备份已完整复制。配置备份失败不会停机；停机后数据备份失败，会尝试重新启动原容器。新版启动或健康检查失败时明确报错，保留完整备份，不自动降级数据库。
+
+备份只保存在服务器本机，含账号凭证和主密钥，仅 root 可读取。脚本不会自动删除历史备份；长期使用需留意磁盘空间，重要备份另外下载保存。脚本本身有修改时，重新执行一次安装步骤即可更新该命令。
+
+脚本通过个人覆盖配置选择镜像，不拉源码、不在服务器编译、不修改 `.env` 或数据卷。显式执行 `docker compose -f docker-compose.yml ...` 会忽略个人覆盖文件，日常更新请使用 `sudo reelax-update`。
 
 作者后续有更新时，可通过 Fork 的 **Sync fork** 或在本地合并 `upstream/main` 引入；存在冲突时先处理和验证，不强制覆盖自己的功能。

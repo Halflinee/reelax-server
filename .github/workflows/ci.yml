@@ -37,6 +37,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: 镜像更新脚本（备份与失败恢复）
+        run: bash scripts/test-update-image.sh
+
       # 含越权矩阵、真实 CONNECT 隧道的代理端到端、WS 用户隔离、签名手算对账
       - name: 测试
         run: npm test
