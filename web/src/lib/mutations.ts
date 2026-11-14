@@ -7,6 +7,15 @@ import { api, ApiError } from "./api.ts";
 import { ACCOUNTS_QUERY_KEY, MODULES_QUERY_KEY, PROXIES_QUERY_KEY } from "./queries.ts";
 import type { SwapExecuteResult, SwapState } from "./queries.ts";
 import type { TradePreview, TradePreviewInput } from "./queries.ts";
+import type { MasteryTransferPreview } from "./queries.ts";
+
+export function useMasteryTransferPreview() {
+  return useMutation({
+    mutationFn: (input: { sourceAccountId: string; targetAccountId: string }) =>
+      api.get<MasteryTransferPreview>("/api/mastery-transfer-preview", input),
+    retry: false,
+  });
+}
 
 /** 用户主动读取一次预览；实际发送 GET，不触发任何游戏交易。 */
 export function useTradePreview() {

@@ -12,6 +12,19 @@ export const PROXIES_QUERY_KEY = ["proxies"] as const;
 export const MODULES_QUERY_KEY = ["modules"] as const;
 
 export type TradePreviewInput = { payerAccountId: string; receiverAccountId: string; amount: number };
+export type MasteryTransferPreview = {
+  createdAt: number;
+  source: { accountId: string; label: string; nickname: string };
+  target: { accountId: string; label: string; nickname: string };
+  rows: {
+    fishId: string; name: string; rarityLabel: string; biomeName: string;
+    targetMissing: number; sourceOwned: number; sourceReserved: number; sourceProtected: number;
+    sourceCanProvide: number; suggestedQuantity: number;
+    returnFish: { fishId: string; name: string; quantity: number; sourceNeedFilled: number }[];
+    notes: string[];
+  }[];
+  issues: string[];
+};
 export type TradePreview = {
   createdAt: number;
   payer: { accountId: string; label: string; nickname: string; gold: number };

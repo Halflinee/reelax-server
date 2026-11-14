@@ -8,7 +8,7 @@
 //    两份由 test/changelog-json.test.ts 钉住不许漂移。
 //
 // 当前版本（与 package.json 的 version 同步维护）
-export const VERSION = "1.24.3";
+export const VERSION = "1.24.4";
 
 export type ChangeKind = "feature" | "improve" | "fix";
 
@@ -23,6 +23,21 @@ export type ChangelogEntry = {
 };
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.24.4",
+    date: "2026-11-14",
+    title: "新增跨账号专精鱼供需预览",
+    changes: [
+      {
+        kind: "feature",
+        text: "新增「专精鱼调配预览」：选择出鱼和收鱼账号，分别读取当前专精目标与背包，按鱼种展示缺口、库存、自身保留和可提供数量，并生成同稀有度一比一交换建议；只读预览，不挂单、不解锁、不交换、不献祭",
+      },
+      {
+        kind: "improve",
+        text: "交换建议保留双方自身专精所需，排除锁定及倍率保护的鱼，优先用回交换鱼补出鱼号的专精缺口；回交换库存统一分配，避免多条建议重复使用同一批鱼",
+      },
+    ],
+  },
   {
     version: "1.24.3",
     date: "2026-11-14",
