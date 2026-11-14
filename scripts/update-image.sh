@@ -6,9 +6,41 @@ umask 077
 DEPLOY_DIR=/opt/reelax-server
 BACKUP_ROOT=/root/reelax-backups
 LOCK_FILE=/run/lock/reelax-update.lock
+KEEP_BACKUPS=5
 
 fail() { printf '更新未完成：%s\n' "$1" >&2; exit 1; }
 step() { printf '\n==> %s\n' "$1"; }
+
+prune_backups() {
+    local candidate name sorted root_real resolved kept=1
+    local -a names=()
+    root_real=$(realpath -e -- "$BACKUP_ROOT") || return 1
+    [[ $root_real != / ]] || return 1
+
+    # 只清理本脚本生成且已经完整复制的备份；当前备份始终保留。
+    for candidate in "$BACKUP_ROOT"/*; do
+        [[ -d $candidate && ! -L $candidate && $candidate != "$backup_dir" ]] || continue
+        name=${candidate##*/}
+        [[ $name =~ ^[0-9]{8}-[0-9]{6}-[[:alnum:]]{6}$ ]] || continue
+        [[ -f $candidate/backup.complete && ! -L $candidate/backup.complete ]] || continue
+        names+=("$name")
+    done
+    [[ ${#names[@]} -ge $KEEP_BACKUPS ]] || return 0
+    sorted=$(printf '%s\n' "${names[@]}" | LC_ALL=C sort -r) || return 1
+    while IFS= read -r name; do
+        if [[ $kept -lt $KEEP_BACKUPS ]]; then
+            kept=$((kept + 1))
+            continue
+        fi
+        candidate="$BACKUP_ROOT/$name"
+        # 删除前核对实际绝对路径必须仍是备份根目录的直接子目录。
+        [[ ! -L $candidate ]] || return 1
+        resolved=$(realpath -e -- "$candidate") || return 1
+        [[ $resolved == "$root_real/$name" ]] || return 1
+        rm -rf -- "$resolved" || return 1
+        printf '已清理旧备份：%s\n' "$name"
+    done <<< "$sorted"
+}
 
 [[ $# -eq 0 ]] || fail '此命令不需要参数。'
 [[ $(id -u) -eq 0 ]] || fail '请使用 sudo reelax-update。'
@@ -88,6 +120,8 @@ for ((attempt = 1; attempt <= 30; attempt++)); do
             console.log(JSON.stringify(body));
         } catch { process.exit(1); }
     ' 2>/dev/null); then
+        step "健康检查通过，清理旧备份（保留最近 $KEEP_BACKUPS 次完整备份）"
+        prune_backups || fail '新版健康检查已通过，但旧备份清理未完成，请检查上方错误。'
         printf '\n更新完成，健康检查通过：%s\n备份位置：%s\n请刷新网站，确认原账号和新增功能。\n' "$health" "$backup_dir"
         exit 0
     fi

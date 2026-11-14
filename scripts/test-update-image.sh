@@ -72,6 +72,19 @@ check_case() {
     printf 'MASTER_KEY=test-only\n' > "$CASE_DIR/deploy/.env"
     printf 'name: reelax-server\n' > "$CASE_DIR/deploy/docker-compose.yml"
     printf 'services: {}\n' > "$CASE_DIR/deploy/docker-compose.override.yml"
+    if [[ $1 == retention || $1 == health-failure ]]; then
+        for i in {1..7}; do
+            mkdir -p "$CASE_DIR/backups/20000101-00000$i-ABC123"
+            touch "$CASE_DIR/backups/20000101-00000$i-ABC123/backup.complete"
+        done
+        # 不完整备份、手工目录和指向其他目录的符号链接不能被清理。
+        mkdir -p "$CASE_DIR/backups/19990101-000000-ABC123" "$CASE_DIR/backups/manual-keep" "$CASE_DIR/outside"
+        touch "$CASE_DIR/backups/manual-keep/backup.complete" "$CASE_DIR/outside/backup.complete"
+        # Git Bash 默认把链接复制成目录；真实符号链接在 Ubuntu CI 上验证。
+        if [[ $OSTYPE != msys* ]]; then
+            ln -s "$CASE_DIR/outside" "$CASE_DIR/backups/19980101-000000-ABC123"
+        fi
+    fi
     # 只替换宿主机路径，运行的仍是完整生产脚本。
     sed -e "s|^DEPLOY_DIR=.*|DEPLOY_DIR='$CASE_DIR/deploy'|" \
         -e "s|^BACKUP_ROOT=.*|BACKUP_ROOT='$CASE_DIR/backups'|" \
@@ -79,10 +92,10 @@ check_case() {
         "$SOURCE_DIR/update-image.sh" > "$CASE_DIR/update.sh"
     status=0
     bash "$CASE_DIR/update.sh" > "$CASE_DIR/output" 2>&1 || status=$?
-    if [[ $1 == success ]]; then
+    if [[ $1 == success || $1 == retention ]]; then
         [[ $status -eq 0 ]] || cat "$CASE_DIR/output"
         [[ $status -eq 0 ]]
-        backup=$(find "$CASE_DIR/backups" -mindepth 1 -maxdepth 1 -type d)
+        backup=$(sed -n 's/^备份完成：//p' "$CASE_DIR/output")
         [[ -f $backup/backup.complete && -f $backup/data/reelax.db-wal && -f $backup/data/wechat-creds/test ]]
         [[ $(cat "$backup/image-id.txt") == sha256:old-image ]]
         for file in .env docker-compose.yml docker-compose.override.yml; do
@@ -94,6 +107,19 @@ check_case() {
         fi
         [[ ! -e $CASE_DIR/resumed ]]
         grep -q '更新完成，健康检查通过' "$CASE_DIR/output"
+        if [[ $1 == retention ]]; then
+            for i in {1..3}; do
+                [[ ! -e $CASE_DIR/backups/20000101-00000$i-ABC123 ]]
+            done
+            for i in {4..7}; do
+                [[ -f $CASE_DIR/backups/20000101-00000$i-ABC123/backup.complete ]]
+            done
+            [[ -d $CASE_DIR/backups/19990101-000000-ABC123 && -f $CASE_DIR/backups/manual-keep/backup.complete ]]
+            [[ -f $CASE_DIR/outside/backup.complete ]]
+            if [[ $OSTYPE != msys* ]]; then
+                [[ -L $CASE_DIR/backups/19980101-000000-ABC123 && -e $CASE_DIR/backups/19980101-000000-ABC123 ]]
+            fi
+        fi
     else
         [[ $status -ne 0 ]]
         ! grep -q '更新完成，健康检查通过' "$CASE_DIR/output"
@@ -109,6 +135,11 @@ check_case() {
             start-failure|health-failure)
                 [[ ! -e $CASE_DIR/resumed ]]
                 [[ -n $(find "$CASE_DIR/backups" -name backup.complete) ]]
+                if [[ $1 == health-failure ]]; then
+                    for i in {1..7}; do
+                        [[ -f $CASE_DIR/backups/20000101-00000$i-ABC123/backup.complete ]]
+                    done
+                fi
                 ;;
         esac
     fi
@@ -116,6 +147,7 @@ check_case() {
 }
 
 check_case success
+check_case retention
 check_case pull-failure
 check_case backup-failure
 check_case start-failure
