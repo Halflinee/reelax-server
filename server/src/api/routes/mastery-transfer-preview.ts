@@ -9,11 +9,27 @@ import { GameClientError } from "../../game/errors.ts";
 import { HttpError } from "../server.ts";
 
 const inputSchema = z.object({ sourceAccountId: z.string().min(1).max(64), targetAccountId: z.string().min(1).max(64) }).strict();
+const marketSchema = inputSchema.extend({
+  fishId: z.string().min(1).max(128),
+  quantity: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  maxUnitPrice: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  budget: z.coerce.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+}).strict();
 
 export function createMasteryTransferPreviewRouter(deps: { accounts: AccountService; registry: RunnerRegistry }): Router {
   const router = Router();
   const service = new MasteryTransferPreviewService(deps);
   router.use(requireApproved);
+  router.get("/market", query(marketSchema), async (req, res) => {
+    const input = res.locals.query as z.infer<typeof marketSchema>;
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      res.json(await service.marketPreview(currentUserId(req), input.sourceAccountId, input.targetAccountId, input));
+    } catch (error) {
+      if (error instanceof GameClientError) throw new HttpError(502, "GAME_READ_FAILED", `读取游戏数据失败：${error.message}`);
+      throw error;
+    }
+  });
   router.get("/", query(inputSchema), async (req, res) => {
     const input = res.locals.query as z.infer<typeof inputSchema>;
     res.setHeader("Cache-Control", "no-store");

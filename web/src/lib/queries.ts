@@ -12,6 +12,15 @@ export const PROXIES_QUERY_KEY = ["proxies"] as const;
 export const MODULES_QUERY_KEY = ["modules"] as const;
 
 export type TradePreviewInput = { payerAccountId: string; receiverAccountId: string; amount: number };
+export type MasteryMarketPreview = {
+  createdAt: number; target: { accountId: string; label: string; nickname: string };
+  fishId: string; name: string; targetMissing: number; gold: number;
+  minimumUnitPrice: number; maxOrderQuantity: number; requestedQuantity: number;
+  maxUnitPrice: number; budget: number; orderQuantity: number; reserveGold: number;
+  expectedQuantity: number; expectedCostGold: number; pendingQuantity: number;
+  bestAsk: number | null; bookVersion: number; levelsRead: number;
+  fills: { unitPrice: number; quantity: number; costGold: number }[]; issues: string[];
+};
 export type MasteryTransferPreview = {
   createdAt: number;
   source: { accountId: string; label: string; nickname: string };

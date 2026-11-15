@@ -7,7 +7,7 @@ import { api, ApiError } from "./api.ts";
 import { ACCOUNTS_QUERY_KEY, MODULES_QUERY_KEY, PROXIES_QUERY_KEY } from "./queries.ts";
 import type { SwapExecuteResult, SwapState } from "./queries.ts";
 import type { TradePreview, TradePreviewInput } from "./queries.ts";
-import type { MasteryTransferPreview } from "./queries.ts";
+import type { MasteryTransferPreview, MasteryMarketPreview } from "./queries.ts";
 import type { GoldTransfer } from "./queries.ts";
 
 export function useGoldTransferAction(action: "confirm" | "check" | "close") {
@@ -28,6 +28,14 @@ export function useMasteryTransferPreview() {
   return useMutation({
     mutationFn: (input: { sourceAccountId: string; targetAccountId: string }) =>
       api.get<MasteryTransferPreview>("/api/mastery-transfer-preview", input),
+    retry: false,
+  });
+}
+
+export function useMasteryMarketPreview() {
+  return useMutation({
+    mutationFn: (input: { sourceAccountId: string; targetAccountId: string; fishId: string; quantity?: number; maxUnitPrice?: number; budget?: number }) =>
+      api.get<MasteryMarketPreview>("/api/mastery-transfer-preview/market", input),
     retry: false,
   });
 }

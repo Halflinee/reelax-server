@@ -5,9 +5,10 @@ import type { AccountService } from "./account-service.ts";
 import type { RunnerRegistry } from "../game/runner-registry.ts";
 import { readSwapTargets } from "./swap-plan.ts";
 import { RARITIES, rarityLabel, rarityRank } from "../modules/shared/rarity.ts";
+import { planMasteryMarket, type MasteryMarketInput, type MasteryMarketPreview } from "./mastery-market-preview.ts";
 
 const quantity = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
-const profileSchema = z.object({ player: z.object({ id: z.string().min(1), nickname: z.string(), canAccessMarket: z.boolean() }) });
+const profileSchema = z.object({ player: z.object({ id: z.string().min(1), nickname: z.string(), canAccessMarket: z.boolean(), gold: quantity.optional() }) });
 const inventorySchema = z.object({ fish: z.array(z.object({
   fishId: z.string().min(1), quantity, isLocked: z.boolean(),
   isManuallyLocked: z.boolean().optional(), isMasteryLocked: z.boolean().optional(),
@@ -117,7 +118,7 @@ export function planMasteryTransfer(input: {
     }
     if (!stock?.owned) notes.push("出鱼账号没有这条鱼。");
     else if (!sourceCanProvide) notes.push("扣除自身专精所需和锁定、倍率保护后，没有可提供的余量。");
-    if (!supported) notes.push("此稀有度不支持以物易物，暂不提供定向交换方案。");
+    if (!supported) notes.push("此稀有度不支持以物易物，可查看市场限价购买预览。");
     else if (input.marketAvailable && sourceCanProvide > suggestedQuantity) notes.push("收鱼账号可用于回交换的同稀有度富余鱼不足。");
     return {
       fishId: id, name: fish.name, rarityLabel: rarityLabel(fish.rarity), biomeName: biomes.get(fish.biomeId)!,
@@ -136,6 +137,22 @@ export class MasteryTransferPreviewService {
     this.registry = deps.registry;
   }
   async preview(userId: string, sourceId: string, targetId: string): Promise<MasteryTransferPreview> {
+    return (await this.load(userId, sourceId, targetId)).preview;
+  }
+  async marketPreview(userId: string, sourceId: string, targetId: string, input: MasteryMarketInput): Promise<MasteryMarketPreview> {
+    const { preview, targetClient, targetPlayer, catalog } = await this.load(userId, sourceId, targetId);
+    if (!targetPlayer.canAccessMarket) throw new HttpError(400, "MARKET_UNAVAILABLE", "收鱼账号尚不能使用市场。");
+    const row = preview.rows.find((entry) => entry.fishId === input.fishId);
+    if (!row) throw new HttpError(400, "NO_MASTERY_SHORTAGE", "这条鱼已不在收鱼账号当前的专精缺口中，请重新读取供需。");
+    const fish = read(catalogSchema, catalog, "鱼类资料").fish.find((entry) => entry.id === input.fishId)!;
+    if (targetPlayer.gold === undefined) throw new HttpError(502, "GAME_DATA_INVALID", "账号金币数据不完整，无法计算购买预算。");
+    const [config, book] = await Promise.all([targetClient.marketConfig(), targetClient.marketFishOrderBook(input.fishId)]);
+    return {
+      ...planMasteryMarket({ input, fish, missing: row.targetMissing, gold: targetPlayer.gold, config, book }),
+      createdAt: Date.now(), target: preview.target,
+    };
+  }
+  private async load(userId: string, sourceId: string, targetId: string) {
     const source = this.accounts.getForUser(sourceId, userId);
     const target = this.accounts.getForUser(targetId, userId);
     if (source.id === target.id) throw new HttpError(400, "SAME_ACCOUNT", "出鱼和收鱼不能选择同一个账号。");
@@ -152,7 +169,7 @@ export class MasteryTransferPreviewService {
     const issues: string[] = [];
     if (!sourcePlayer.canAccessMarket) issues.push("出鱼账号尚不能使用市场，只展示供需，不生成交换建议。");
     if (!targetPlayer.canAccessMarket) issues.push("收鱼账号尚不能使用市场，只展示供需，不生成交换建议。");
-    return {
+    const preview: MasteryTransferPreview = {
       createdAt: Date.now(),
       source: { accountId: source.id, label: source.label, nickname: sourcePlayer.nickname },
       target: { accountId: target.id, label: target.label, nickname: targetPlayer.nickname },
@@ -160,5 +177,6 @@ export class MasteryTransferPreviewService {
         marketAvailable: sourcePlayer.canAccessMarket && targetPlayer.canAccessMarket }),
       issues,
     };
+    return { preview, targetClient, targetPlayer, catalog };
   }
 }

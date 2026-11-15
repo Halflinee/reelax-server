@@ -547,6 +547,9 @@ export class GameClient {
   marketConfig() {
     return this.request("/api/market/config");
   }
+  marketFishOrderBook(fishId: string) {
+    return this.request(`/api/market/fish/${encodeURIComponent(fishId)}/order-book?limit=50`);
+  }
   marketGearOrder(gearId: string, limitUnitPrice: number, key: string) {
     return this.request("/api/market/orders", {
       method: "POST", body: { assetType: "gear", side: "sell", gearId, limitUnitPrice }, headers: { "Idempotency-Key": key },
