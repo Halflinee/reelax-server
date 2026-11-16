@@ -47,7 +47,7 @@ export const USER_NAV_ITEMS: NavItem[] = [
   { to: "/proxies", label: "代理", icon: IconCloudNetwork },
   { to: "/swap", label: "交换助手", icon: IconArrowsExchange },
   { to: "/trade-preview", label: "金币集中", icon: IconCoins },
-  { to: "/mastery-transfer-preview", label: "专精鱼调配预览", icon: IconFish },
+  { to: "/mastery-transfer-preview", label: "专精鱼调配", icon: IconFish },
   { to: "/cdk", label: "CDK 兑换", icon: IconGift },
   { to: "/notify", label: "推送", icon: IconBroadcast },
   { to: "/logs", label: "运行日志", icon: IconListDetails },

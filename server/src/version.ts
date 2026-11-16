@@ -8,7 +8,7 @@
 //    两份由 test/changelog-json.test.ts 钉住不许漂移。
 //
 // 当前版本（与 package.json 的 version 同步维护）
-export const VERSION = "1.24.6";
+export const VERSION = "1.24.7";
 
 export type ChangeKind = "feature" | "improve" | "fix";
 
@@ -23,6 +23,25 @@ export type ChangelogEntry = {
 };
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.24.7",
+    date: "2026-11-16",
+    title: "专精鱼按需求筛选供给并手动确认市场交易",
+    changes: [
+      {
+        kind: "feature",
+        text: "「专精鱼调配」改为先选择需求账号、地图区域和专精鱼，再显示需求方之外全部账号的库存、自身保留、保护及可供数量；选择供给方、价格和数量后生成交易预览",
+      },
+      {
+        kind: "feature",
+        text: "手动接受公开撮合风险后，需求方先挂买单，复查盘口后供给方按价卖出；发现竞争订单或条件变化即停止，仅在双方订单及实际成交记录完整对应时报告完成，不能保证指定账号成交",
+      },
+      {
+        kind: "improve",
+        text: "新增持久化专精鱼交易记录、重复确认保护、异常只读核对及金币交易并发限制；超时、部分成交或重启中断不自动重试，剩余挂单需到游戏内核对并取消",
+      },
+    ],
+  },
   {
     version: "1.24.6",
     date: "2026-11-15",

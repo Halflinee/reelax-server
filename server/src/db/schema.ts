@@ -346,6 +346,24 @@ CREATE TABLE gold_transfers (
 CREATE INDEX idx_gold_transfers_user ON gold_transfers(user_id, created_at DESC);
 `,
   },
+  {
+    id: "0012_fish_market_transfers",
+    sql: `
+CREATE TABLE fish_market_transfers (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  base_url TEXT NOT NULL,
+  buyer_player_id TEXT NOT NULL,
+  seller_player_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX idx_fish_market_transfers_user ON fish_market_transfers(user_id, created_at DESC);
+`,
+  },
 ];
 
 /** 供 migrate.ts 记录已应用版本 */

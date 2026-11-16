@@ -56,7 +56,9 @@ export class GoldTransfersRepo extends BaseRepo {
       const busy = this.db.get<{ id: string }>(`SELECT id FROM gold_transfers WHERE status IN ('executing','review_required')
         AND json_extract(payload_json,'$.preview.baseUrl')=?
         AND (payer_player_id IN (?,?) OR receiver_player_id IN (?,?)) LIMIT 1`, operation.preview.baseUrl, payer.playerId, receiver.playerId, payer.playerId, receiver.playerId);
-      if (busy) throw new HttpError(409, "TRANSFER_BUSY", "相关账号已有进行中或待核对的交易，请先处理该记录。");
+      const fishBusy = this.db.get<{ id: string }>(`SELECT id FROM fish_market_transfers WHERE status IN ('executing','review_required') AND base_url=?
+        AND (buyer_player_id IN (?,?) OR seller_player_id IN (?,?)) LIMIT 1`, operation.preview.baseUrl, payer.playerId, receiver.playerId, payer.playerId, receiver.playerId);
+      if (busy || fishBusy) throw new HttpError(409, "TRANSFER_BUSY", "相关账号已有进行中或待核对的交易，请先处理该记录。");
       return { operation: this.update(userId, id, "executing", { message: "正在重新核对账号、金额和装备。" }), started: true };
     });
   }

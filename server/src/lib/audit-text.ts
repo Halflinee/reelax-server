@@ -162,6 +162,12 @@ export function describeAudit(row: AuditLike, r: AuditResolvers = {}): string {
     }
     case "account.gold_transfer.closed":
       return `人工核对后结束金币集中记录 ${target ?? ""}`;
+    case "account.fish_transfer.confirmed": {
+      const detail = detailObject(row);
+      return `确认需求账号${accountText(String(detail.buyer ?? ""), r)}与供给账号${accountText(String(detail.seller ?? ""), r)}尝试公开市场交易 ${String(detail.quantity ?? "")} 条专精鱼，单价 ${String(detail.unitPrice ?? "")} 金币`;
+    }
+    case "account.fish_transfer.closed":
+      return `人工核对后结束专精鱼交易记录 ${target ?? ""}`;
 
     // ---- 交换助手（专精换鱼） ----
     case "account.swap.scan":

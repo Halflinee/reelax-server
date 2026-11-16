@@ -550,6 +550,19 @@ export class GameClient {
   marketFishOrderBook(fishId: string) {
     return this.request(`/api/market/fish/${encodeURIComponent(fishId)}/order-book?limit=50`);
   }
+  marketFishOrder(side: "buy" | "sell", fishId: string, quantity: number, limitUnitPrice: number, key: string) {
+    return this.request("/api/market/orders", {
+      method: "POST", body: { assetType: "fish", side, fishId, quantity, limitUnitPrice }, headers: { "Idempotency-Key": key },
+    });
+  }
+  marketOwnFishOrders(cursor?: string) {
+    const query = new URLSearchParams({ assetType: "fish", limit: "50" });
+    if (cursor) query.set("cursor", cursor);
+    return this.request(`/api/market/me/orders?${query}`);
+  }
+  marketFishTrades() {
+    return this.request("/api/market/me/trades?assetType=fish&limit=50");
+  }
   marketGearOrder(gearId: string, limitUnitPrice: number, key: string) {
     return this.request("/api/market/orders", {
       method: "POST", body: { assetType: "gear", side: "sell", gearId, limitUnitPrice }, headers: { "Idempotency-Key": key },

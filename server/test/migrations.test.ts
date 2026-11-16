@@ -14,21 +14,22 @@ import { MIGRATIONS, MIGRATION_TABLE } from "../src/db/schema.ts";
 import { openDb } from "../src/db/client.ts";
 import { createRepos } from "../src/db/repositories/index.ts";
 
-it("旧数据库新增交易记录表时保留原有用户和账号", () => {
+it.each(["0011_gold_transfers", "0012_fish_market_transfers"])("从 %s 之前的数据库升级保留原有用户和账号", (firstNewId) => {
   const db = openDb(":memory:");
   try {
     db.exec(MIGRATION_TABLE);
-    for (const migration of MIGRATIONS.filter((item) => item.id !== "0011_gold_transfers")) {
+    for (const migration of MIGRATIONS.filter((item) => item.id < firstNewId)) {
       db.exec(migration.sql);
       db.run("INSERT INTO _migrations(id,applied_at) VALUES(?,?)", migration.id, Date.now());
     }
     const repos = createRepos(db);
     const user = repos.users.create({ email: "migration-test@example.com", passwordHash: "test-placeholder", displayName: "保留的用户", status: "approved" });
     const account = repos.accounts.create({ userId: user.id, label: "保留的账号", authType: "cookie", email: "", baseUrl: "https://reelax.cn" });
-    expect(db.migrate().applied).toEqual(["0011_gold_transfers"]);
+    expect(db.migrate().applied).toEqual(MIGRATIONS.filter((item) => item.id >= firstNewId).map((item) => item.id));
     expect(repos.users.findById(user.id)?.display_name).toBe("保留的用户");
     expect(repos.accounts.findById(account.id)?.label).toBe("保留的账号");
     expect(db.get("SELECT name FROM sqlite_master WHERE name='gold_transfers'")).toBeDefined();
+    expect(db.get("SELECT name FROM sqlite_master WHERE name='fish_market_transfers'")).toBeDefined();
   } finally { db.close(); }
 });
 
@@ -51,6 +52,7 @@ const FROZEN_CHECKSUMS: Record<string, string> = {
   "0009_barter_task_specs": "fef9c07e60f8df7b",
   "0010_drop_barter_tasks": "dbf7dba8a9a21b4a",
   "0011_gold_transfers": "fa8b9b12b463127d",
+  "0012_fish_market_transfers": "5843f6aba1718b4d",
 };
 
 function checksum(sql: string): string {

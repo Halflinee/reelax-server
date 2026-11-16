@@ -11,6 +11,38 @@ export const ACCOUNTS_QUERY_KEY = ["accounts"] as const;
 export const PROXIES_QUERY_KEY = ["proxies"] as const;
 export const MODULES_QUERY_KEY = ["modules"] as const;
 
+export type FishActor = { accountId: string; playerId: string; label: string; nickname: string; gold: number; canAccessMarket: boolean };
+export type FishSelection = { targetAccountId: string; biomeId: string; fishId: string };
+export type FishQuoteInput = FishSelection & { sourceAccountId: string; quantity: number; unitPrice: number };
+export type FishDefinition = { id: string; name: string; biomeId: string; biomeName: string; rarity: string; rarityLabel: string; sellPrice: number };
+export type MasteryDemandOptions = { createdAt: number; target: FishActor; biomes: { id: string; name: string;
+  fish: { id: string; name: string; rarityLabel: string; missing: number }[] }[] };
+export type MasterySupplyPreview = { createdAt: number; target: FishActor; fish: FishDefinition; targetMissing: number;
+  market: { minimumUnitPrice: number; maxOrderQuantity: number; feeBasisPoints: number } | null;
+  suppliers: { accountId: string; label: string; nickname: string | null; playerId: string | null; owned: number | null;
+    reserved: number | null; protected: number | null; canProvide: number | null; issue: string | null }[] };
+export type FishTradeQuote = { createdAt: number; baseUrl: string; target: FishActor; source: FishActor; fish: FishDefinition;
+  targetMissing: number; sourceCanProvide: number; quantity: number; unitPrice: number; grossGold: number;
+  feeBasisPoints: number; feeGold: number; netGold: number; issues: string[]; confirmation?: { id: string; expiresAt: number } };
+export type FishTransfer = { id: string; status: "previewed" | "executing" | "completed" | "failed" | "review_required" | "closed";
+  expiresAt: number; createdAt: number; updatedAt: number; quote: FishTradeQuote; message: string; buyerOrderId: string | null; sellerOrderId: string | null;
+  settlement: { quantity: number; grossGold: number; feeGold: number; netGold: number; tradeIds: string[] } | null };
+
+export function useMasteryDemandOptions(targetAccountId: string) {
+  return useQuery({ queryKey: ["mastery-demand", targetAccountId],
+    queryFn: () => api.get<MasteryDemandOptions>("/api/mastery-transfer-preview/demand", { targetAccountId }),
+    enabled: !!targetAccountId, retry: false, refetchOnWindowFocus: false });
+}
+export function useFishTransfer(id: string | null) {
+  return useQuery({ queryKey: ["fish-transfer", id], queryFn: () => api.get<FishTransfer>(`/api/mastery-transfer-preview/operations/${id}`),
+    enabled: !!id, retry: false,
+    refetchInterval: (query) => query.state.data?.status === "executing" || (query.state.data?.status === "previewed" && query.state.data.expiresAt > Date.now()) ? 1000 : false });
+}
+export function useFishTransferHistory() {
+  return useQuery({ queryKey: ["fish-transfer-history"], queryFn: () => api.get<FishTransfer[]>("/api/mastery-transfer-preview/operations"),
+    refetchInterval: (query) => query.state.data?.some((item) => item.status === "executing") ? 2000 : false });
+}
+
 export type TradePreviewInput = { payerAccountId: string; receiverAccountId: string; amount: number };
 export type MasteryMarketPreview = {
   createdAt: number; target: { accountId: string; label: string; nickname: string };

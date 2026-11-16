@@ -8,7 +8,8 @@ import { RARITIES, rarityLabel, rarityRank } from "../modules/shared/rarity.ts";
 import { planMasteryMarket, type MasteryMarketInput, type MasteryMarketPreview } from "./mastery-market-preview.ts";
 
 const quantity = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
-const profileSchema = z.object({ player: z.object({ id: z.string().min(1), nickname: z.string(), canAccessMarket: z.boolean(), gold: quantity.optional() }) });
+export const masteryProfileSchema = z.object({ player: z.object({ id: z.string().min(1), nickname: z.string(), canAccessMarket: z.boolean(), gold: quantity.optional() }) });
+const profileSchema = masteryProfileSchema;
 const inventorySchema = z.object({ fish: z.array(z.object({
   fishId: z.string().min(1), quantity, isLocked: z.boolean(),
   isManuallyLocked: z.boolean().optional(), isMasteryLocked: z.boolean().optional(),
@@ -21,10 +22,11 @@ const masterySchema = z.object({ biomes: z.array(z.object({
     remainingQuantity: quantity, availableQuantity: quantity, isWaiting: z.boolean().optional(),
   })),
 })) });
-const catalogSchema = z.object({
+export const masteryCatalogSchema = z.object({
   fish: z.array(z.object({ id: z.string().min(1), name: z.string().min(1), rarity: z.enum(RARITIES), biomeId: z.string().min(1), sellPrice: quantity })),
   biomes: z.array(z.object({ id: z.string().min(1), name: z.string().min(1) })),
 });
+const catalogSchema = masteryCatalogSchema;
 
 type AccountSummary = { accountId: string; label: string; nickname: string };
 export type MasteryTransferRow = {
@@ -47,7 +49,7 @@ function read<T>(schema: z.ZodType<T>, raw: unknown, label: string): T {
 type Catalog = z.infer<typeof catalogSchema>;
 type Stock = { owned: number; protected: number; reserved: number; spare: number };
 
-function snapshot(masteryRaw: unknown, inventoryRaw: unknown) {
+export function readMasterySnapshot(masteryRaw: unknown, inventoryRaw: unknown) {
   const mastery = read(masterySchema, masteryRaw, "专精目标");
   const inventory = read(inventorySchema, inventoryRaw, "鱼获背包");
   const required = new Map<string, number>();
@@ -68,6 +70,7 @@ function snapshot(masteryRaw: unknown, inventoryRaw: unknown) {
   const missing = new Map([...required].map(([id, need]) => [id, Math.max(0, need - (stocks.get(id)?.owned ?? 0))]));
   return { stocks, missing };
 }
+const snapshot = readMasterySnapshot;
 
 /** 按当前供需分配回交换鱼，每条库存仅分配一次，不把同一批鱼重复计入多行方案。 */
 export function planMasteryTransfer(input: {

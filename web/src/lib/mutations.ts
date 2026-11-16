@@ -9,6 +9,28 @@ import type { SwapExecuteResult, SwapState } from "./queries.ts";
 import type { TradePreview, TradePreviewInput } from "./queries.ts";
 import type { MasteryTransferPreview, MasteryMarketPreview } from "./queries.ts";
 import type { GoldTransfer } from "./queries.ts";
+import type { FishSelection, FishQuoteInput, MasterySupplyPreview, FishTradeQuote, FishTransfer } from "./queries.ts";
+
+export function useMasterySupplyPreview() {
+  return useMutation({ mutationFn: (input: FishSelection) => api.get<MasterySupplyPreview>("/api/mastery-transfer-preview/supply", input), retry: false });
+}
+export function useFishTradeQuote() {
+  return useMutation({ mutationFn: (input: FishQuoteInput) => api.get<FishTradeQuote>("/api/mastery-transfer-preview/quote", input), retry: false });
+}
+export function useFishTransferAction(action: "confirm" | "check" | "close") {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<FishTransfer>(`/api/mastery-transfer-preview/operations/${id}/${action}`, { confirmed: true, ...(action === "confirm" ? { acceptPublicMatching: true } : {}) }),
+    retry: false,
+    onSuccess: (operation) => { client.setQueryData(["fish-transfer", operation.id], operation); },
+    onSettled: (_data, _error, id) => {
+      void client.invalidateQueries({ queryKey: ["fish-transfer", id] });
+      void client.invalidateQueries({ queryKey: ["fish-transfer-history"] });
+      void client.invalidateQueries({ queryKey: ["mastery-demand"] });
+      void client.invalidateQueries({ queryKey: ACCOUNTS_QUERY_KEY });
+    },
+  });
+}
 
 export function useGoldTransferAction(action: "confirm" | "check" | "close") {
   const client = useQueryClient();
