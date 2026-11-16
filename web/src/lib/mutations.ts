@@ -11,6 +11,18 @@ import type { MasteryTransferPreview, MasteryMarketPreview } from "./queries.ts"
 import type { GoldTransfer } from "./queries.ts";
 import type { FishSelection, FishQuoteInput, MasterySupplyPreview, FishTradeQuote, FishTransfer } from "./queries.ts";
 
+export function useRefreshMasteryCatalog() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (targetAccountId: string) => api.post<{ fishCount: number; biomeCount: number }>("/api/mastery-transfer-preview/catalog/refresh", { targetAccountId }),
+    retry: false,
+    onSuccess: (_result, targetAccountId) => {
+      toast.success("固定资料已更新");
+      void client.invalidateQueries({ queryKey: ["mastery-demand", targetAccountId] });
+    },
+  });
+}
+
 export function useMasterySupplyPreview() {
   return useMutation({ mutationFn: (input: FishSelection) => api.get<MasterySupplyPreview>("/api/mastery-transfer-preview/supply", input), retry: false });
 }

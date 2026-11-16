@@ -8,7 +8,7 @@
 //    两份由 test/changelog-json.test.ts 钉住不许漂移。
 //
 // 当前版本（与 package.json 的 version 同步维护）
-export const VERSION = "1.24.9";
+export const VERSION = "1.24.10";
 
 export type ChangeKind = "feature" | "improve" | "fix";
 
@@ -23,6 +23,25 @@ export type ChangelogEntry = {
 };
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.24.10",
+    date: "2026-11-16",
+    title: "固定地图和鱼种资料本地保存",
+    changes: [
+      {
+        kind: "feature",
+        text: "固定地图和鱼种资料保存到服务器现有数据库，首次下载后长期复用，更新或重启后仍可读取；生成预览和确认交易均不再重复下载整份公共资料",
+      },
+      {
+        kind: "improve",
+        text: "专精需求、库存、余额、市场配置与盘口仍实时读取。新增「更新固定资料」按钮，游戏新增地图、鱼种或修改资料时手动更新；失败或返回不完整资料时保留原有本地内容",
+      },
+      {
+        kind: "improve",
+        text: "新增固定资料表，保留原有账号、配置和交易记录；固定资料随现有数据卷一起备份，本地资料损坏或缺少新鱼种时给出明确更新提示",
+      },
+    ],
+  },
   {
     version: "1.24.9",
     date: "2026-11-16",

@@ -97,6 +97,20 @@ function fixture() {
 }
 
 describe("需求筛选和全部账号供给", () => {
+  it("手动更新固定资料只读取公共资料，未登录、未审批和越权都不能更新", async () => {
+    const f = fixture(); const path = "/api/mastery-transfer-preview/catalog/refresh";
+    const body = { targetAccountId: f.targetId };
+    const other = app.seedApprovedUser(`catalog-foreign-${seq}@example.com`); const foreign = app.seedAccount(other.id);
+    expect((await app.post(path, body)).status).toBe(401);
+    expect((await app.post(path, { targetAccountId: foreign }, f.user.jar)).status).toBe(404);
+    expect((await app.post(path, { ...body, execute: true }, f.user.jar)).status).toBe(400);
+    expect(f.calls).toHaveLength(0);
+    const response = await app.post(path, body, f.user.jar);
+    expect(response.status).toBe(200); expect(response.body).toEqual({ fishCount: 1, biomeCount: 1 });
+    expect(f.calls.map((call) => [call.method, call.path])).toEqual([["GET", "/api/content/bootstrap"]]);
+    app.repos.users.setStatus(f.user.id, "pending");
+    expect((await app.post(path, body, f.user.jar)).status).toBe(403); expect(f.calls).toHaveLength(1);
+  });
   it("按需求账号真实地图和专精目标生成下拉项，缺口扣除现有鱼", async () => {
     const f = fixture();
     const response = await app.get<MasteryDemandOptions>(`/api/mastery-transfer-preview/demand?targetAccountId=${f.targetId}`, f.user.jar);
@@ -165,6 +179,14 @@ describe("公开盘口竞争检查", () => {
 });
 
 describe("专精鱼确认交易", () => {
+  it("确认时实时复查个人和盘口数据，固定资料不再重复下载", async () => {
+    const f = fixture(); const id = await f.prepare();
+    const download = vi.spyOn(app.registry.require(f.targetId).client, "contentBootstrap").mockRejectedValue(new Error("此时不应下载固定资料"));
+    await f.confirm(id); expect((await f.finished(id)).status).toBe("completed");
+    expect(download).not.toHaveBeenCalled();
+    expect(f.calls.filter((call) => call.path === "/api/inventory/fish").length).toBeGreaterThan(2);
+    expect(f.calls.filter((call) => call.path.includes("/order-book?")).length).toBeGreaterThan(1);
+  });
   it("先买单后卖单，仅匹配双方订单及新成交后完成；预览本身无写操作", async () => {
     const f = fixture(); const id = await f.prepare(); expect(f.writes()).toHaveLength(0);
     expect((await f.confirm(id)).status).toBe(200);

@@ -5,9 +5,11 @@ import type { RunnerRegistry } from "../game/runner-registry.ts";
 import { masteryCatalogSchema, masteryProfileSchema, readMasterySnapshot } from "./mastery-transfer-preview.ts";
 import { rarityLabel } from "../modules/shared/rarity.ts";
 import { GameClientError } from "../game/errors.ts";
+import type { Repos } from "../db/repositories/index.ts";
 
 const amount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const positive = amount.positive();
+const staticCatalogSchema = masteryCatalogSchema.refine((data) => data.fish.length > 0 && data.biomes.length > 0);
 export const fishMarketConfigSchema = z.object({
   sellerFeeBasisPoints: amount.max(10000), maxFishOrderQuantity: positive,
   activeOrderCount: amount, maxActiveOrdersPerPlayer: amount,
@@ -51,11 +53,10 @@ export function checkFishBook(raw: unknown, price: number, ownBuyQuantity = 0): 
 }
 
 export class MasterySupplyService {
-  private deps: { accounts: AccountService; registry: RunnerRegistry };
-  // 只复用公开鱼种和地图资料；个人余额、背包、专精目标及盘口不进入缓存。
-  private catalogs = new Map<string, { data: z.infer<typeof masteryCatalogSchema>; expiresAt: number }>();
+  private deps: { accounts: AccountService; registry: RunnerRegistry; repos: Repos };
+  // 固定资料保存在现有数据卷的数据库中；个人数据始终实时读取。
   private catalogLoads = new Map<string, Promise<z.infer<typeof masteryCatalogSchema>>>();
-  constructor(deps: { accounts: AccountService; registry: RunnerRegistry }) { this.deps = deps; }
+  constructor(deps: { accounts: AccountService; registry: RunnerRegistry; repos: Repos }) { this.deps = deps; }
   private async readGame<T>(account: AccountView, resource: string, run: () => Promise<T>): Promise<T> {
     try { return await run(); } catch (error) {
       if (error instanceof GameClientError) throw new GameClientError(`${account.label}：读取${resource}失败，${error.message}`, { status: error.status, code: error.code });
@@ -66,25 +67,35 @@ export class MasterySupplyService {
     const key = account.baseUrl;
     // 成功资料是公开内容；尚未完成的请求含账号和代理相关错误，按用户隔离。
     const loadingKey = JSON.stringify([userId, key]);
-    for (const [url, entry] of this.catalogs) if (entry.expiresAt <= Date.now()) this.catalogs.delete(url);
     if (!fresh) {
-      const cached = this.catalogs.get(key);
-      if (cached) return cached.data;
+      const cached = this.deps.repos.gameCatalogs.find(key);
+      if (cached) {
+        try { return staticCatalogSchema.parse(JSON.parse(cached.content_json)); } catch {
+          throw new HttpError(502, "LOCAL_CATALOG_INVALID", "本地固定资料损坏或格式已变化，请点击「更新固定资料」重新下载。");
+        }
+      }
       const loading = this.catalogLoads.get(loadingKey);
       if (loading) return loading;
     }
     const load = async () => {
       const client = this.deps.registry.require(account.id).client;
       const raw = await this.readGame(account, "公共鱼种和地图资料", () => client.contentBootstrap());
-      const data = marketRead(masteryCatalogSchema, raw);
-      this.catalogs.set(key, { data, expiresAt: Date.now() + 10 * 60_000 });
+      const parsed = staticCatalogSchema.safeParse(raw);
+      if (!parsed.success) throw new HttpError(502, "STATIC_CATALOG_INVALID", "游戏返回的固定资料不完整，未保存；请稍后重新更新。");
+      const data = parsed.data;
+      this.deps.repos.gameCatalogs.save(key, JSON.stringify(data));
       return data;
     };
-    // 正式确认使用独立的新请求，不借用界面此前的资料或未完成请求。
+    // 只有用户主动更新固定资料时才强制重新下载；正常预览和确认都使用本地资料。
     if (fresh) return load();
     const pending = load().finally(() => { if (this.catalogLoads.get(loadingKey) === pending) this.catalogLoads.delete(loadingKey); });
     this.catalogLoads.set(loadingKey, pending);
     return pending;
+  }
+  async refreshCatalog(userId: string, targetId: string) {
+    const account = this.deps.accounts.getForUser(targetId, userId);
+    const data = await this.catalog(userId, account, true);
+    return { fishCount: data.fish.length, biomeCount: data.biomes.length };
   }
   private async accountContext(userId: string, accountId: string) {
     const account = this.deps.accounts.getForUser(accountId, userId);
@@ -100,9 +111,9 @@ export class MasterySupplyService {
     if (player.gold === undefined) throw new HttpError(502, "GAME_DATA_INVALID", "账号金币数据缺失。");
     return { accountId: account.id, label: account.label, playerId: player.id, nickname: player.nickname, gold: player.gold, canAccessMarket: player.canAccessMarket };
   }
-  private async targetContext(userId: string, targetId: string, freshCatalog = false) {
+  private async targetContext(userId: string, targetId: string) {
     const account = this.deps.accounts.getForUser(targetId, userId);
-    const [context, catalog] = await Promise.all([this.accountContext(userId, targetId), this.catalog(userId, account, freshCatalog)]);
+    const [context, catalog] = await Promise.all([this.accountContext(userId, targetId), this.catalog(userId, account, false)]);
     return { ...context, target: this.actor(context), catalog };
   }
   private supplier(context: Awaited<ReturnType<MasterySupplyService["accountContext"]>>, targetPlayerId: string, fishId: string): FishSupplier {
@@ -118,7 +129,7 @@ export class MasterySupplyService {
     return [...context.snapshot.missing].map(([id, missing]) => {
       const fish = context.catalog.fish.find((entry) => entry.id === id);
       const biome = context.catalog.biomes.find((entry) => entry.id === fish?.biomeId);
-      if (!fish || !biome) throw new HttpError(502, "FISH_DATA_UNKNOWN", "专精目标与鱼类资料不一致，请重新读取。");
+      if (!fish || !biome) throw new HttpError(502, "FISH_DATA_UNKNOWN", "本地固定资料未包含当前专精鱼或地图，请点击「更新固定资料」。");
       return { fish: { ...fish, biomeName: biome.name, rarityLabel: rarityLabel(fish.rarity) }, missing };
     });
   }
@@ -167,7 +178,7 @@ export class MasterySupplyService {
       market: config ? { minimumUnitPrice: priceFloor(config, selected.fish), maxOrderQuantity: config.maxFishOrderQuantity, feeBasisPoints: config.sellerFeeBasisPoints } : null,
       suppliers: suppliers.sort((a, b) => (b.canProvide ?? -1) - (a.canProvide ?? -1)) };
   }
-  async quote(userId: string, input: FishQuoteInput, freshCatalog = false): Promise<FishTradeQuote> {
+  async quote(userId: string, input: FishQuoteInput): Promise<FishTradeQuote> {
     const sourceAccount = this.deps.accounts.getForUser(input.sourceAccountId, userId);
     const targetAccount = this.deps.accounts.getForUser(input.targetAccountId, userId);
     if (sourceAccount.id === targetAccount.id) throw new HttpError(400, "SAME_ACCOUNT", "需求与供给不能是同一个账号。");
@@ -176,7 +187,7 @@ export class MasterySupplyService {
     const targetClient = this.deps.registry.require(targetAccount.id).client;
     // 报价只读取选中的两号；所有独立接口同轮发起，每份账号快照和市场配置只读一次。
     const [context, sourceContext, sourceRawConfig, targetRawConfig, book] = await Promise.all([
-      this.targetContext(userId, targetAccount.id, freshCatalog), this.accountContext(userId, sourceAccount.id),
+      this.targetContext(userId, targetAccount.id), this.accountContext(userId, sourceAccount.id),
       this.readGame(sourceAccount, "市场配置", () => sourceClient.marketConfig()), this.readGame(targetAccount, "市场配置", () => targetClient.marketConfig()),
       this.readGame(targetAccount, "鱼类盘口", () => targetClient.marketFishOrderBook(input.fishId)),
     ]);

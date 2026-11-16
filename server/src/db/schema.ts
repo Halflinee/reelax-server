@@ -364,6 +364,16 @@ CREATE TABLE fish_market_transfers (
 CREATE INDEX idx_fish_market_transfers_user ON fish_market_transfers(user_id, created_at DESC);
 `,
   },
+  {
+    id: "0013_game_catalogs",
+    sql: `
+CREATE TABLE game_catalogs (
+  base_url TEXT PRIMARY KEY,
+  content_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+`,
+  },
 ];
 
 /** 供 migrate.ts 记录已应用版本 */

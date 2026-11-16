@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { Input } from "@/components/ui/input.tsx";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog.tsx";
 import { useAccounts, useMasteryDemandOptions, useFishTransfer, useFishTransferHistory, type FishTradeQuote, type FishTransfer } from "@/lib/queries.ts";
-import { useMasterySupplyPreview, useFishTradeQuote, useFishTransferAction } from "@/lib/mutations.ts";
+import { useMasterySupplyPreview, useFishTradeQuote, useFishTransferAction, useRefreshMasteryCatalog } from "@/lib/mutations.ts";
 
 const selectClass = "border-input bg-background h-9 w-full min-w-0 rounded-md border px-3 text-sm disabled:opacity-50";
 const number = (value: number) => value.toLocaleString("zh-CN");
@@ -30,12 +30,13 @@ export default function MasteryTransferPreviewPage() {
   const [operationId, setOperationId] = useState<string | null>(null);
   const demand = useMasteryDemandOptions(targetId);
   const supply = useMasterySupplyPreview();
+  const refreshCatalog = useRefreshMasteryCatalog();
   const quote = useFishTradeQuote();
   const confirm = useFishTransferAction("confirm");
   const operation = useFishTransfer(operationId);
   const history = useFishTransferHistory();
   const busy = !!(confirm.isPending || operation.data?.status === "executing" || history.data?.some((item) => item.status === "executing"));
-  const reading = supply.isPending || quote.isPending;
+  const reading = supply.isPending || quote.isPending || refreshCatalog.isPending;
   const biome = demand.data?.biomes.find((entry) => entry.id === biomeId);
   const selectedFish = biome?.fish.find((entry) => entry.id === fishId);
   const selectedSource = supply.data?.suppliers.find((entry) => entry.accountId === sourceId);
@@ -59,7 +60,7 @@ export default function MasteryTransferPreviewPage() {
       <form className="space-y-4" onSubmit={submit}><fieldset className="space-y-4" disabled={busy || reading}>
         <div className="grid gap-4 sm:grid-cols-3">
           <label className="space-y-1.5"><span className="text-sm font-medium">需求账号</span>
-            <select className={selectClass} required value={targetId} onChange={(event) => { setTargetId(event.target.value); setBiomeId(""); setFishId(""); clearSupply(); }}>
+            <select className={selectClass} required value={targetId} onChange={(event) => { setTargetId(event.target.value); setBiomeId(""); setFishId(""); clearSupply(); refreshCatalog.reset(); }}>
               <option value="">请选择需求账号</option>{accounts.data.map((account) => <option key={account.id} value={account.id}>{account.label}{account.player?.nickname ? `（${account.player.nickname}）` : ""}</option>)}
             </select>
           </label>
@@ -74,10 +75,16 @@ export default function MasteryTransferPreviewPage() {
             </select>
           </label>
         </div>
+        <div className="flex flex-wrap gap-3">
         <Button type="submit" disabled={!selectedFish || demand.isFetching || reading || busy}>{supply.isPending ? <IconLoader2 className="size-4 animate-spin" /> : <IconFish className="size-4" />}{supply.isPending ? "正在读取全部账号…" : "生成供需预览"}</Button>
-        <p className="text-muted-foreground text-xs">按需求账号当前已解锁、正在进行的专精目标筛选。供需预览不会挂单或扣金币。</p>
+        <Button type="button" variant="outline" disabled={!targetId || demand.isFetching || reading || busy} onClick={() => {
+          clearSupply(); setBiomeId(""); setFishId(""); refreshCatalog.mutate(targetId);
+        }}>{refreshCatalog.isPending ? "正在更新固定资料…" : "更新固定资料"}</Button>
+        </div>
+        <p className="text-muted-foreground text-xs">固定地图、鱼种资料首次下载后保存在服务器，重启也能使用。专精需求、库存及交易数据实时读取；游戏新增内容后再点「更新固定资料」。供需预览不会挂单或扣金币。</p>
       </fieldset></form>
       {demand.isError ? <p role="alert" className="text-destructive mt-3 text-sm">{demand.error.message}</p> : null}
+      {refreshCatalog.isError ? <p role="alert" className="text-destructive mt-3 text-sm">{refreshCatalog.error.message}</p> : null}
       {demand.data && !demand.data.biomes.length ? <p className="text-muted-foreground mt-3 text-sm">这个账号当前没有正在进行的专精目标。</p> : null}
     </CardContent></Card>
     {supply.isError ? <Alert variant="destructive"><AlertDescription>{supply.error.message}</AlertDescription></Alert> : null}

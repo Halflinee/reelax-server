@@ -33,6 +33,9 @@ export function createMasteryTransferPreviewRouter(deps: { accounts: AccountServ
   const transfers = new FishTransferService(deps);
   router.use(requireApproved);
   router.use((_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
+  router.post("/catalog/refresh", body(demandSchema), async (req, res) => {
+    res.json(await supply.refreshCatalog(currentUserId(req), (req.body as z.infer<typeof demandSchema>).targetAccountId));
+  });
   router.get("/demand", query(demandSchema), async (req, res) => {
     res.json(await supply.options(currentUserId(req), (res.locals.query as z.infer<typeof demandSchema>).targetAccountId));
   });
