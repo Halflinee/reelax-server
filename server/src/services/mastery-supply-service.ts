@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { HttpError } from "../api/server.ts";
-import type { AccountService } from "./account-service.ts";
+import type { AccountService, AccountView } from "./account-service.ts";
 import type { RunnerRegistry } from "../game/runner-registry.ts";
 import { masteryCatalogSchema, masteryProfileSchema, readMasterySnapshot } from "./mastery-transfer-preview.ts";
 import { rarityLabel } from "../modules/shared/rarity.ts";
@@ -52,14 +52,31 @@ export function checkFishBook(raw: unknown, price: number, ownBuyQuantity = 0): 
 export class MasterySupplyService {
   private deps: { accounts: AccountService; registry: RunnerRegistry };
   constructor(deps: { accounts: AccountService; registry: RunnerRegistry }) { this.deps = deps; }
+  private async accountContext(userId: string, accountId: string) {
+    const account = this.deps.accounts.getForUser(accountId, userId);
+    const client = this.deps.registry.require(accountId).client;
+    const [profile, mastery, inventory] = await Promise.all([client.me(), client.mastery(), client.inventoryFish()]);
+    return { account, client, player: marketRead(masteryProfileSchema, profile).player, snapshot: readMasterySnapshot(mastery, inventory) };
+  }
+  private actor(context: Awaited<ReturnType<MasterySupplyService["accountContext"]>>): FishActor {
+    const { account, player } = context;
+    if (player.gold === undefined) throw new HttpError(502, "GAME_DATA_INVALID", "账号金币数据缺失。");
+    return { accountId: account.id, label: account.label, playerId: player.id, nickname: player.nickname, gold: player.gold, canAccessMarket: player.canAccessMarket };
+  }
   private async targetContext(userId: string, targetId: string) {
-    const account = this.deps.accounts.getForUser(targetId, userId);
+    this.deps.accounts.getForUser(targetId, userId);
     const client = this.deps.registry.require(targetId).client;
-    const [profile, mastery, inventory, rawCatalog] = await Promise.all([client.me(), client.mastery(), client.inventoryFish(), client.contentBootstrap()]);
-    const player = marketRead(masteryProfileSchema, profile).player;
-    if (player.gold === undefined) throw new HttpError(502, "GAME_DATA_INVALID", "需求账号金币数据缺失。");
-    const target: FishActor = { accountId: account.id, label: account.label, playerId: player.id, nickname: player.nickname, gold: player.gold, canAccessMarket: player.canAccessMarket };
-    return { account, client, target, snapshot: readMasterySnapshot(mastery, inventory), catalog: marketRead(masteryCatalogSchema, rawCatalog) };
+    const [context, rawCatalog] = await Promise.all([this.accountContext(userId, targetId), client.contentBootstrap()]);
+    return { ...context, target: this.actor(context), catalog: marketRead(masteryCatalogSchema, rawCatalog) };
+  }
+  private supplier(context: Awaited<ReturnType<MasterySupplyService["accountContext"]>>, targetPlayerId: string, fishId: string): FishSupplier {
+    const { account, player, snapshot } = context;
+    const row: FishSupplier = { accountId: account.id, label: account.label, nickname: player.nickname, playerId: player.id,
+      owned: null, reserved: null, protected: null, canProvide: null, issue: null };
+    if (player.id === targetPlayerId) return { ...row, issue: "这条记录登录的是需求账号本身。" };
+    const stock = snapshot.stocks.get(fishId);
+    return { ...row, owned: stock?.owned ?? 0, reserved: stock?.reserved ?? 0, protected: stock?.protected ?? 0,
+      canProvide: player.canAccessMarket ? stock?.spare ?? 0 : 0, issue: player.canAccessMarket ? null : "该账号尚不能使用市场。" };
   }
   private definitions(context: Awaited<ReturnType<MasterySupplyService["targetContext"]>>) {
     return [...context.snapshot.missing].map(([id, missing]) => {
@@ -77,31 +94,38 @@ export class MasterySupplyService {
     })).filter((biome) => biome.fish.length > 0) };
   }
   async preview(userId: string, input: FishSelection, onlySourceId?: string): Promise<MasterySupplyPreview> {
-    // 单个供给方报价也必须先校验归属，不能先读取别人的游戏数据。
     if (onlySourceId) this.deps.accounts.getForUser(onlySourceId, userId);
-    const context = await this.targetContext(userId, input.targetAccountId);
-    const selected = this.definitions(context).find((entry) => entry.fish.id === input.fishId && entry.fish.biomeId === input.biomeId);
-    if (!selected) throw new HttpError(409, "MASTERY_TARGET_CHANGED", "所选地图或专精鱼已不在当前目标中，请重新选择。");
-    const config = context.target.canAccessMarket ? marketRead(fishMarketConfigSchema, await context.client.marketConfig()) : null;
+    const targetAccount = this.deps.accounts.getForUser(input.targetAccountId, userId);
+    const targetClient = this.deps.registry.require(targetAccount.id).client;
     const accounts = this.deps.accounts.listForUser(userId).filter((account) => account.id !== input.targetAccountId && (!onlySourceId || account.id === onlySourceId));
-    const suppliers: FishSupplier[] = [];
-    // 每批最多读取三个账号，避免账号较多时同时冲击游戏接口。
-    for (let start = 0; start < accounts.length; start += 3) {
-      suppliers.push(...await Promise.all(accounts.slice(start, start + 3).map(async (account): Promise<FishSupplier> => {
+    const targetPromise = this.targetContext(userId, input.targetAccountId);
+    // 配置与账号独立读取；若账号没有市场权限，明确展示市场不可用。
+    const configPromise = targetClient.marketConfig().then((data: unknown) => ({ data }), (error: unknown) => ({ error }));
+    const suppliers: FishSupplier[] = new Array(accounts.length);
+    let nextIndex = 0;
+    const worker = async () => {
+      while (nextIndex < accounts.length) {
+        const index = nextIndex++; const account: AccountView = accounts[index]!;
         const row: FishSupplier = { accountId: account.id, label: account.label, nickname: null, playerId: null,
           owned: null, reserved: null, protected: null, canProvide: null, issue: null };
-        if (account.baseUrl !== context.account.baseUrl) return { ...row, issue: "账号属于其他游戏服务器。" };
+        if (account.baseUrl !== targetAccount.baseUrl) { suppliers[index] = { ...row, issue: "账号属于其他游戏服务器。" }; continue; }
         try {
-          const client = this.deps.registry.require(account.id).client;
-          const [rawProfile, mastery, inventory] = await Promise.all([client.me(), client.mastery(), client.inventoryFish()]);
-          const player = marketRead(masteryProfileSchema, rawProfile).player;
-          row.nickname = player.nickname; row.playerId = player.id;
-          if (player.id === context.target.playerId) return { ...row, issue: "这条记录登录的是需求账号本身。" };
-          const stock = readMasterySnapshot(mastery, inventory).stocks.get(input.fishId);
-          return { ...row, owned: stock?.owned ?? 0, reserved: stock?.reserved ?? 0, protected: stock?.protected ?? 0,
-            canProvide: player.canAccessMarket ? stock?.spare ?? 0 : 0, issue: player.canAccessMarket ? null : "该账号尚不能使用市场。" };
-        } catch (error) { return { ...row, issue: `读取失败：${error instanceof Error ? error.message : "未知错误"}` }; }
-      })));
+          const source = await this.accountContext(userId, account.id);
+          const target = await targetPromise;
+          suppliers[index] = this.supplier(source, target.target.playerId, input.fishId);
+        } catch (error) { suppliers[index] = { ...row, issue: `读取失败：${error instanceof Error ? error.message : "未知错误"}` }; }
+      }
+    };
+    // 始终最多并行三个供给账号；某个账号慢时，空闲位置继续读取后面的账号。
+    const [context, configResult] = await Promise.all([targetPromise, configPromise,
+      Promise.all(Array.from({ length: Math.min(3, accounts.length) }, () => worker())),
+    ]);
+    const selected = this.definitions(context).find((entry) => entry.fish.id === input.fishId && entry.fish.biomeId === input.biomeId);
+    if (!selected) throw new HttpError(409, "MASTERY_TARGET_CHANGED", "所选地图或专精鱼已不在当前目标中，请重新选择。");
+    let config: z.infer<typeof fishMarketConfigSchema> | null = null;
+    if (context.target.canAccessMarket) {
+      if ("error" in configResult) throw configResult.error;
+      config = marketRead(fishMarketConfigSchema, configResult.data);
     }
     return { createdAt: Date.now(), target: context.target, fish: selected.fish, targetMissing: selected.missing,
       market: config ? { minimumUnitPrice: priceFloor(config, selected.fish), maxOrderQuantity: config.maxFishOrderQuantity, feeBasisPoints: config.sellerFeeBasisPoints } : null,
@@ -112,16 +136,19 @@ export class MasterySupplyService {
     const targetAccount = this.deps.accounts.getForUser(input.targetAccountId, userId);
     if (sourceAccount.id === targetAccount.id) throw new HttpError(400, "SAME_ACCOUNT", "需求与供给不能是同一个账号。");
     if (sourceAccount.baseUrl !== targetAccount.baseUrl) throw new HttpError(400, "DIFFERENT_GAME_SERVER", "两个账号必须属于同一个游戏服务器。");
-    const supply = await this.preview(userId, input, input.sourceAccountId);
-    const supplier = supply.suppliers[0];
-    if (!supplier || supplier.issue || supplier.canProvide === null) throw new HttpError(409, "SOURCE_UNAVAILABLE", supplier?.issue ?? "供给账号不可用。");
     const sourceClient = this.deps.registry.require(sourceAccount.id).client;
     const targetClient = this.deps.registry.require(targetAccount.id).client;
-    const [sourceProfile, sourceRawConfig, targetRawConfig, book] = await Promise.all([sourceClient.me(), sourceClient.marketConfig(), targetClient.marketConfig(), targetClient.marketFishOrderBook(input.fishId)]);
-    const player = marketRead(masteryProfileSchema, sourceProfile).player;
-    if (player.id !== supplier.playerId || !player.canAccessMarket) throw new HttpError(409, "ACCOUNT_CHANGED", "供给账号角色或市场权限已变化。");
-    if (player.gold === undefined) throw new HttpError(502, "GAME_DATA_INVALID", "供给账号金币数据缺失。");
-    const source: FishActor = { accountId: sourceAccount.id, label: sourceAccount.label, playerId: player.id, nickname: player.nickname, gold: player.gold, canAccessMarket: player.canAccessMarket };
+    // 报价只读取选中的两号；所有独立接口同轮发起，每份账号快照和市场配置只读一次。
+    const [context, sourceContext, sourceRawConfig, targetRawConfig, book] = await Promise.all([
+      this.targetContext(userId, targetAccount.id), this.accountContext(userId, sourceAccount.id),
+      sourceClient.marketConfig(), targetClient.marketConfig(), targetClient.marketFishOrderBook(input.fishId),
+    ]);
+    const selected = this.definitions(context).find((entry) => entry.fish.id === input.fishId && entry.fish.biomeId === input.biomeId);
+    if (!selected) throw new HttpError(409, "MASTERY_TARGET_CHANGED", "所选地图或专精鱼已不在当前目标中，请重新选择。");
+    const supplier = this.supplier(sourceContext, context.target.playerId, input.fishId);
+    if (supplier.issue || supplier.canProvide === null) throw new HttpError(409, "SOURCE_UNAVAILABLE", supplier.issue ?? "供给账号不可用。");
+    const source = this.actor(sourceContext);
+    const supply = { target: context.target, fish: selected.fish, targetMissing: selected.missing };
     const sourceConfig = marketRead(fishMarketConfigSchema, sourceRawConfig);
     const targetConfig = marketRead(fishMarketConfigSchema, targetRawConfig);
     const minimumPrice = Math.max(priceFloor(sourceConfig, supply.fish), priceFloor(targetConfig, supply.fish));

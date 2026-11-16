@@ -8,7 +8,7 @@
 //    两份由 test/changelog-json.test.ts 钉住不许漂移。
 //
 // 当前版本（与 package.json 的 version 同步维护）
-export const VERSION = "1.24.7";
+export const VERSION = "1.24.8";
 
 export type ChangeKind = "feature" | "improve" | "fix";
 
@@ -23,6 +23,21 @@ export type ChangelogEntry = {
 };
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.24.8",
+    date: "2026-11-16",
+    title: "加快专精鱼读取与交易预览",
+    changes: [
+      {
+        kind: "fix",
+        text: "专精鱼供需改为并行读取需求、市场和供给账号；交易预览不再重复读取同一账号和市场配置，减少串行网络等待。供给账号较多时，慢账号不再阻塞空闲读取位置",
+      },
+      {
+        kind: "improve",
+        text: "同一账号的普通并发请求共享会话准备，减少首次读取及临近到期时的重复验证；业务数据仍实时读取，交易前的身份、库存、余额及盘口复查保留",
+      },
+    ],
+  },
   {
     version: "1.24.7",
     date: "2026-11-16",

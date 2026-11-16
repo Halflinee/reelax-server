@@ -116,6 +116,7 @@ export class GameClient {
   private proxyConfigured: boolean;
   private onLog: GameClientOptions["onLog"];
   private fetchImpl: typeof fetch;
+  private sessionPreparation: Promise<unknown> | null = null;
 
   constructor(opts: GameClientOptions) {
     this.baseUrl = opts.baseUrl.replace(/\/+$/, "");
@@ -152,6 +153,7 @@ export class GameClient {
     if (input.cookie !== undefined) this.cookie = input.cookie;
     this.proof = null;
     this.proofExpiresAt = 0;
+    this.sessionPreparation = null;
   }
 
   private log(level: "info" | "warn" | "error", tag: string, msg: string): void {
@@ -251,6 +253,18 @@ export class GameClient {
 
   /* ---------- 统一请求入口 ---------- */
 
+  private async prepareRequestSession(signal: AbortSignal | undefined, refreshOnly: boolean): Promise<unknown> {
+    // 带取消信号的请求保留独立取消语义；普通并发读取共享本次会话准备，不缓存业务数据。
+    const prepare = () => refreshOnly ? this.refreshProof(signal) : this.ensureSession(signal);
+    if (signal) return prepare();
+    if (this.sessionPreparation) return this.sessionPreparation;
+    const pending = prepare().finally(() => {
+      if (this.sessionPreparation === pending) this.sessionPreparation = null;
+    });
+    this.sessionPreparation = pending;
+    return pending;
+  }
+
   async request(path: string, opts: RequestOptions = {}): Promise<any> {
     opts.signal?.throwIfAborted();
     const method = opts.method ?? "GET";
@@ -258,12 +272,13 @@ export class GameClient {
     const idempotencyKey = opts.idempotent ? crypto.randomUUID() : null;
 
     if (!this.proof && !SIGNED_SKIP.has(path)) {
-      await this.ensureSession(opts.signal);
+      await (method === "GET" ? this.prepareRequestSession(opts.signal, false) : this.ensureSession(opts.signal));
     }
     // proof 临近过期则主动续期（省掉一次「失败 → 重试」）
     if (this.proof && this.proofExpiresAt && this.now() > this.proofExpiresAt - PROOF_REFRESH_MARGIN_MS) {
       try {
-        await this.refreshProof(opts.signal);
+        // 重登属于 POST，不能等待包含自身的会话准备链路。
+        await (method === "GET" ? this.prepareRequestSession(opts.signal, true) : this.refreshProof(opts.signal));
       } catch (err) {
         this.log("warn", "会话", `proof 续期失败：${err instanceof Error ? err.message : String(err)}`);
       }

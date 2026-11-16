@@ -23,6 +23,33 @@ function makeProof(expiresAt: number): string {
 
 const PROOF = makeProof(9_999_999_999_999);
 
+describe("同一账号并发读取的会话准备", () => {
+  it.each(["cold", "expiring"])("%s 时多个读取只验证一次会话", async (state) => {
+    const { impl, calls } = makeFetch((call) => ({
+      body: call.url.endsWith("/api/me") ? { player: { nickname: "测试" } } : {},
+      headers: { "x-arcane-request-proof": PROOF },
+    }));
+    const client = newClient(impl);
+    if (state === "expiring") client.setProof(makeProof(Date.now() + 1000));
+    await Promise.all([client.request("/api/mastery"), client.request("/api/inventory/fish"), client.request("/api/market/config")]);
+    expect(calls.filter((call) => call.url.endsWith("/api/me"))).toHaveLength(1);
+  });
+  it("自动重登不等待自身正在执行的会话准备", async () => {
+    let probes = 0;
+    const { impl, calls } = makeFetch((call) => {
+      if (call.url.endsWith("/api/me")) {
+        if (++probes === 1) client.setProof(makeProof(Date.now() + 1000));
+        return { status: 401, body: { error: { message: "会话失效" } } };
+      }
+      return { body: {}, headers: { "x-arcane-request-proof": PROOF } };
+    });
+    const client = newClient(impl);
+    const reading = client.request("/api/mastery");
+    await vi.waitFor(() => expect(calls.filter((call) => call.url.endsWith("/api/auth/login"))).toHaveLength(1), { timeout: 1000, interval: 10 });
+    await reading;
+  });
+});
+
 /* ---------------- 纯函数层 ---------------- */
 
 describe("签名算法（独立实现对账）", () => {
