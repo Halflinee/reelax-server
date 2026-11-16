@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildFullApp, type FullApp } from "./helpers/full-app.ts";
 import { MasterySupplyService } from "../src/services/mastery-supply-service.ts";
+import { GameClientError, GAME_ERROR_CODES } from "../src/game/errors.ts";
 
 let app: FullApp; let sequence = 0;
 beforeAll(async () => { app = await buildFullApp(); });
@@ -12,11 +13,12 @@ function fixture(sourceCount = 3) {
   const targetId = app.seedAccount(user.id, "需求账号");
   const sourceIds = Array.from({ length: sourceCount }, (_, index) => app.seedAccount(user.id, `供给${index}`));
   const calls: string[] = [];
-  const controls = { balance: 10000, stock: 10, slowAccountId: "" };
+  const controls = { balance: 10000, stock: 10, slowAccountId: "", failCatalog: false, failPath: "" };
   for (const id of [targetId, ...sourceIds]) {
     vi.spyOn(app.registry.require(id).client, "request").mockImplementation(async (path) => {
       calls.push(`${id}:${path}`);
       await new Promise((resolve) => setTimeout(resolve, controls.slowAccountId === id ? 300 : 100));
+      if (path === controls.failPath || (path === "/api/content/bootstrap" && controls.failCatalog)) throw new GameClientError("请求超时（30000ms）", { code: GAME_ERROR_CODES.TIMEOUT });
       if (path === "/api/me") return { player: { id, nickname: id, gold: controls.balance, canAccessMarket: true } };
       if (path === "/api/mastery") return { biomes: [{ biomeId: "map", isUnlocked: true, rarities: [{ rarity: "common", fish: { id: "fish" }, remainingQuantity: 5, availableQuantity: 0 }] }] };
       if (path === "/api/inventory/fish") return { fish: [{ fishId: "fish", quantity: id === targetId ? 1 : controls.stock, isLocked: false }] };
@@ -33,9 +35,11 @@ function fixture(sourceCount = 3) {
 async function measure<T>(run: () => Promise<T>) {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   const start = Date.now(); let elapsed = -1;
-  const result = run().then((data) => { elapsed = Date.now() - start; return data; });
+  const result = run().then((data) => { elapsed = Date.now() - start; return { data }; }, (error: unknown) => ({ error }));
   await vi.advanceTimersByTimeAsync(1000);
-  return { data: await result, elapsed };
+  const outcome = await result;
+  if ("error" in outcome) throw outcome.error;
+  return { data: outcome.data, elapsed };
 }
 
 describe("专精鱼真实服务路径的模拟网络延迟", () => {
@@ -68,5 +72,50 @@ describe("专精鱼真实服务路径的模拟网络延迟", () => {
     const changed = await measure(() => f.service.quote(f.user.id, f.input));
     expect(changed.data.issues.join(" ")).toContain("金币不足");
     expect(changed.data.issues.join(" ")).toContain("可出售余量");
+  });
+  it("已读取地图后，生成供需和报价不再重复下载大份公共资料", async () => {
+    const f = fixture();
+    await measure(() => f.service.options(f.user.id, f.input.targetAccountId));
+    f.controls.failCatalog = true;
+    const supply = await measure(() => f.service.preview(f.user.id, f.input));
+    expect(supply.data.suppliers).toHaveLength(3);
+    expect((await measure(() => f.service.quote(f.user.id, f.input))).data.issues).toEqual([]);
+    expect(f.calls.filter((call) => call.endsWith(":/api/content/bootstrap"))).toHaveLength(1);
+  });
+  it("超时能指出具体账号和接口，而不是只显示笼统的 30000ms", async () => {
+    const f = fixture(); f.controls.failPath = "/api/mastery";
+    await expect(measure(() => f.service.options(f.user.id, f.input.targetAccountId))).rejects.toThrow(/需求账号.*专精目标.*30000ms/);
+  });
+  it("并发读取同一游戏公共资料只下载一次，个人数据仍按账号分别读取", async () => {
+    const f = fixture();
+    const results = await measure(() => Promise.all([
+      f.service.options(f.user.id, f.input.targetAccountId), f.service.options(f.user.id, f.sourceIds[0]!),
+    ]));
+    expect(f.calls.filter((call) => call.endsWith(":/api/content/bootstrap"))).toHaveLength(1);
+    expect(results.data[0]!.target.accountId).toBe(f.input.targetAccountId);
+    expect(results.data[1]!.target.accountId).toBe(f.sourceIds[0]);
+  });
+  it("公共资料十分钟后失效，读取失败不缓存成成功", async () => {
+    const f = fixture();
+    await measure(() => f.service.options(f.user.id, f.input.targetAccountId));
+    vi.setSystemTime(Date.now() + 10 * 60_000);
+    f.controls.failCatalog = true;
+    await expect(measure(() => f.service.options(f.user.id, f.input.targetAccountId))).rejects.toThrow(/公共鱼种和地图资料.*30000ms/);
+    f.controls.failCatalog = false;
+    await measure(() => f.service.options(f.user.id, f.input.targetAccountId));
+    expect(f.calls.filter((call) => call.endsWith(":/api/content/bootstrap"))).toHaveLength(3);
+  });
+  it("不同游戏服务器不共享公共资料", async () => {
+    const f = fixture();
+    await measure(() => f.service.options(f.user.id, f.input.targetAccountId));
+    app.repos.accounts.update(f.sourceIds[0]!, f.user.id, { baseUrl: "https://another-game.example" });
+    await measure(() => f.service.options(f.user.id, f.sourceIds[0]!));
+    expect(f.calls.filter((call) => call.endsWith(":/api/content/bootstrap"))).toHaveLength(2);
+  });
+  it("实际交易前的强制复查不借用预览中的公共资料", async () => {
+    const f = fixture();
+    await measure(() => f.service.options(f.user.id, f.input.targetAccountId));
+    f.controls.failCatalog = true;
+    await expect(measure(() => f.service.quote(f.user.id, f.input, true))).rejects.toThrow(/公共鱼种和地图资料.*30000ms/);
   });
 });

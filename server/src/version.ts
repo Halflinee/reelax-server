@@ -8,7 +8,7 @@
 //    两份由 test/changelog-json.test.ts 钉住不许漂移。
 //
 // 当前版本（与 package.json 的 version 同步维护）
-export const VERSION = "1.24.8";
+export const VERSION = "1.24.9";
 
 export type ChangeKind = "feature" | "improve" | "fix";
 
@@ -23,6 +23,21 @@ export type ChangelogEntry = {
 };
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.24.9",
+    date: "2026-11-16",
+    title: "避免专精鱼预览重复下载公共资料并明确超时来源",
+    changes: [
+      {
+        kind: "fix",
+        text: "成功读取的公共鱼种和地图资料按游戏服务器复用十分钟，并发请求共享下载；生成供需和交易预览不再反复下载相同的大份资料。读取失败不作为成功资料缓存",
+      },
+      {
+        kind: "improve",
+        text: "游戏读取失败明确显示账号及具体接口类别，便于区分账号资料、专精目标、背包、公共资料、市场配置和盘口超时；余额、库存、专精与盘口实时读取，正式交易前强制重新获取公共资料",
+      },
+    ],
+  },
   {
     version: "1.24.8",
     date: "2026-11-16",

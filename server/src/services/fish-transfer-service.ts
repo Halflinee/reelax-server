@@ -93,7 +93,7 @@ export class FishTransferService {
     const id = original.id; const plan = original.quote; let wrote = false;
     try {
       const fresh = await this.previews.quote(userId, { targetAccountId: plan.target.accountId, sourceAccountId: plan.source.accountId,
-        biomeId: plan.fish.biomeId, fishId: plan.fish.id, quantity: plan.quantity, unitPrice: plan.unitPrice });
+        biomeId: plan.fish.biomeId, fishId: plan.fish.id, quantity: plan.quantity, unitPrice: plan.unitPrice }, true);
       if (fresh.issues.length || fresh.baseUrl !== plan.baseUrl || fresh.target.playerId !== plan.target.playerId || fresh.source.playerId !== plan.source.playerId
         || fresh.feeBasisPoints !== plan.feeBasisPoints || fresh.grossGold !== plan.grossGold) throw new Error(`预览条件已变化：${fresh.issues.join("；") || "账号或手续费变化"}。请重新预览。`);
       const clients = this.clients(userId, original);
