@@ -62,13 +62,15 @@ export class MasterySupplyService {
       throw error;
     }
   }
-  private async catalog(account: AccountView, fresh: boolean) {
+  private async catalog(userId: string, account: AccountView, fresh: boolean) {
     const key = account.baseUrl;
+    // 成功资料是公开内容；尚未完成的请求含账号和代理相关错误，按用户隔离。
+    const loadingKey = JSON.stringify([userId, key]);
     for (const [url, entry] of this.catalogs) if (entry.expiresAt <= Date.now()) this.catalogs.delete(url);
     if (!fresh) {
       const cached = this.catalogs.get(key);
       if (cached) return cached.data;
-      const loading = this.catalogLoads.get(key);
+      const loading = this.catalogLoads.get(loadingKey);
       if (loading) return loading;
     }
     const load = async () => {
@@ -80,8 +82,8 @@ export class MasterySupplyService {
     };
     // 正式确认使用独立的新请求，不借用界面此前的资料或未完成请求。
     if (fresh) return load();
-    const pending = load().finally(() => { if (this.catalogLoads.get(key) === pending) this.catalogLoads.delete(key); });
-    this.catalogLoads.set(key, pending);
+    const pending = load().finally(() => { if (this.catalogLoads.get(loadingKey) === pending) this.catalogLoads.delete(loadingKey); });
+    this.catalogLoads.set(loadingKey, pending);
     return pending;
   }
   private async accountContext(userId: string, accountId: string) {
@@ -100,7 +102,7 @@ export class MasterySupplyService {
   }
   private async targetContext(userId: string, targetId: string, freshCatalog = false) {
     const account = this.deps.accounts.getForUser(targetId, userId);
-    const [context, catalog] = await Promise.all([this.accountContext(userId, targetId), this.catalog(account, freshCatalog)]);
+    const [context, catalog] = await Promise.all([this.accountContext(userId, targetId), this.catalog(userId, account, freshCatalog)]);
     return { ...context, target: this.actor(context), catalog };
   }
   private supplier(context: Awaited<ReturnType<MasterySupplyService["accountContext"]>>, targetPlayerId: string, fishId: string): FishSupplier {

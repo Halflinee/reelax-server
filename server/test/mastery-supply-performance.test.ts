@@ -118,4 +118,16 @@ describe("专精鱼真实服务路径的模拟网络延迟", () => {
     f.controls.failCatalog = true;
     await expect(measure(() => f.service.quote(f.user.id, f.input, true))).rejects.toThrow(/公共鱼种和地图资料.*30000ms/);
   });
+  it("不同用户的并发下载失败不能带出对方账号名称", async () => {
+    const first = fixture(); const second = fixture();
+    app.repos.accounts.update(second.input.targetAccountId, second.user.id, { label: "另一个用户的账号" });
+    first.controls.failCatalog = true; second.controls.failCatalog = true;
+    const result = await measure(() => Promise.allSettled([
+      first.service.options(first.user.id, first.input.targetAccountId), first.service.options(second.user.id, second.input.targetAccountId),
+    ]));
+    const failures = result.data.map((entry) => entry.status === "rejected" ? String(entry.reason.message) : "没有报错");
+    expect(failures[0]).toContain("需求账号");
+    expect(failures[1]).toContain("另一个用户的账号");
+    expect(failures[1]).not.toContain("需求账号");
+  });
 });
