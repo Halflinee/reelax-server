@@ -10,6 +10,12 @@ import type { TradePreview, TradePreviewInput } from "./queries.ts";
 import type { MasteryTransferPreview, MasteryMarketPreview } from "./queries.ts";
 import type { GoldTransfer } from "./queries.ts";
 import type { FishSelection, FishQuoteInput, MasterySupplyPreview, FishTradeQuote, FishTransfer } from "./queries.ts";
+import type { FishMarketBatch } from "./queries.ts";
+
+export function useFishMarketScan() {
+  return useMutation({ mutationFn: (input: { accountId: string; fishIds: string[]; quantity: number }) =>
+    api.post<FishMarketBatch>("/api/mastery-transfer-preview/market-scan", input), retry: false });
+}
 
 export function useRefreshMasteryCatalog() {
   const client = useQueryClient();
@@ -19,6 +25,7 @@ export function useRefreshMasteryCatalog() {
     onSuccess: (_result, targetAccountId) => {
       toast.success("固定资料已更新");
       void client.invalidateQueries({ queryKey: ["mastery-demand", targetAccountId] });
+      void client.invalidateQueries({ queryKey: ["fish-market-options", targetAccountId] });
     },
   });
 }

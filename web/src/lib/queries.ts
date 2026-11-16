@@ -11,6 +11,19 @@ export const ACCOUNTS_QUERY_KEY = ["accounts"] as const;
 export const PROXIES_QUERY_KEY = ["proxies"] as const;
 export const MODULES_QUERY_KEY = ["modules"] as const;
 
+export type FishMarketOptions = { biomes: { id: string; name: string }[]; fish: { id: string; name: string; biomeId: string; rarityLabel: string }[] };
+export type MarketProfit = { quantity: number; buyPrice: number | null; sellPrice: number | null; costGold: number; grossGold: number;
+  feeGold: number; netGold: number; profitGold: number; returnPercent: number; breakEvenPrice: number | null };
+export type FishMarketRow = { fish: FishDefinition; readAt: number; bookVersion: number | null; feeBasisPoints: number | null; minimumPrice: number | null;
+  buyLevels: { unitPrice: number; quantity: number }[]; sellLevels: { unitPrice: number; quantity: number }[];
+  immediate: (MarketProfit & { buyFills: { unitPrice: number; quantity: number; gold: number }[]; sellFills: { unitPrice: number; quantity: number; gold: number }[] }) | null;
+  waiting: MarketProfit | null; waitingWithinLimits: boolean; notes: string[]; error: string | null };
+export type FishMarketBatch = { readAt: number; accountId: string; gold: number; feeBasisPoints: number; rows: FishMarketRow[] };
+export function useFishMarketOptions(accountId: string) {
+  return useQuery({ queryKey: ["fish-market-options", accountId], queryFn: () => api.get<FishMarketOptions>("/api/mastery-transfer-preview/market-scan/options", { accountId }),
+    enabled: !!accountId, retry: false, staleTime: Infinity, refetchOnWindowFocus: false });
+}
+
 export type FishActor = { accountId: string; playerId: string; label: string; nickname: string; gold: number; canAccessMarket: boolean };
 export type FishSelection = { targetAccountId: string; biomeId: string; fishId: string };
 export type FishQuoteInput = FishSelection & { sourceAccountId: string; quantity: number; unitPrice: number };

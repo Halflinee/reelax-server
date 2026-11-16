@@ -113,6 +113,10 @@ export class MasterySupplyService {
     const data = await this.catalog(userId, account, true);
     return { fishCount: data.fish.length, biomeCount: data.biomes.length };
   }
+  async marketCatalog(userId: string, accountId: string) {
+    const account = this.deps.accounts.getForUser(accountId, userId);
+    return this.catalog(userId, account, false);
+  }
   private async accountContext(userId: string, accountId: string) {
     const account = this.deps.accounts.getForUser(accountId, userId);
     const client = this.deps.registry.require(accountId).client;

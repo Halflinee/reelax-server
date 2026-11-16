@@ -10,6 +10,7 @@ import { HttpError } from "../server.ts";
 import { MasterySupplyService } from "../../services/mastery-supply-service.ts";
 import { FishTransferService } from "../../services/fish-transfer-service.ts";
 import type { Repos } from "../../db/repositories/index.ts";
+import { FishMarketScanService } from "../../services/fish-market-scan.ts";
 
 const inputSchema = z.object({ sourceAccountId: z.string().min(1).max(64), targetAccountId: z.string().min(1).max(64) }).strict();
 const marketSchema = inputSchema.extend({
@@ -30,9 +31,17 @@ export function createMasteryTransferPreviewRouter(deps: { accounts: AccountServ
   const router = Router();
   const service = new MasteryTransferPreviewService(deps);
   const supply = new MasterySupplyService(deps);
+  const marketScan = new FishMarketScanService(deps);
   const transfers = new FishTransferService(deps);
   router.use(requireApproved);
   router.use((_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
+  router.get("/market-scan/options", query(z.object({ accountId: id }).strict()), async (req, res) => {
+    res.json(await marketScan.options(currentUserId(req), (res.locals.query as { accountId: string }).accountId));
+  });
+  router.post("/market-scan", body(z.object({ accountId: id, fishIds: z.array(z.string().min(1).max(128)).min(1).max(3).refine((ids) => new Set(ids).size === ids.length),
+    quantity: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict()), async (req, res) => {
+    res.json(await marketScan.scan(currentUserId(req), req.body));
+  });
   router.post("/catalog/refresh", body(demandSchema), async (req, res) => {
     res.json(await supply.refreshCatalog(currentUserId(req), (req.body as z.infer<typeof demandSchema>).targetAccountId));
   });
