@@ -47,6 +47,12 @@ export function createMasteryTransferPreviewRouter(deps: { accounts: AccountServ
     const quote = await supply.quote(userId, res.locals.query as z.infer<typeof quoteSchema>);
     res.json({ ...quote, confirmation: transfers.prepare(userId, quote) });
   });
+  const autoQuoteSchema = quoteSchema.omit({ unitPrice: true }).strict();
+  router.get("/auto-quote", query(autoQuoteSchema), async (req, res) => {
+    const userId = currentUserId(req);
+    const quote = await supply.quote(userId, res.locals.query as z.infer<typeof autoQuoteSchema>);
+    res.json({ ...quote, confirmation: transfers.prepare(userId, quote) });
+  });
   router.get("/operations", (req, res) => { res.json(transfers.recent(currentUserId(req))); });
   router.get("/operations/:id", (req, res) => { res.json(transfers.get(currentUserId(req), req.params.id as string)); });
   router.post("/operations/:id/confirm", body(z.object({ confirmed: z.literal(true), acceptPublicMatching: z.literal(true) }).strict()), (req, res) => {

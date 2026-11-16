@@ -82,6 +82,8 @@ function fixture() {
   const input = { ...selection, sourceAccountId: sourceId, quantity: 3, unitPrice: 100 };
   const url = (route: string, extra: Record<string, string | number> = {}) => `/api/mastery-transfer-preview/${route}?${new URLSearchParams(Object.entries({ ...input, ...extra }).map(([k, v]) => [k, String(v)]))}`;
   const quote = async (extra = {}) => app.get<FishTradeQuote>(url("quote", extra), user.jar);
+  const autoPath = (extra: Record<string, string | number> = {}) => `/api/mastery-transfer-preview/auto-quote?${new URLSearchParams(Object.entries({ ...selection, sourceAccountId: sourceId, quantity: 3, ...extra }).map(([key, value]) => [key, String(value)]))}`;
+  const autoQuote = (extra = {}) => app.get<FishTradeQuote>(autoPath(extra), user.jar);
   const prepare = async () => {
     const response = await quote(); expect(response.status).toBe(200); expect(response.body.issues).toEqual([]);
     expect(response.body.confirmation).toBeDefined(); return response.body.confirmation!.id;
@@ -93,7 +95,7 @@ function fixture() {
     return result!;
   };
   const writes = () => calls.filter((call) => call.method !== "GET");
-  return { user, targetId, sourceId, states, control, calls, selection, input, url, quote, prepare, confirm, finished, writes };
+  return { user, targetId, sourceId, states, control, calls, selection, input, url, quote, autoPath, autoQuote, prepare, confirm, finished, writes };
 }
 
 describe("需求筛选和全部账号供给", () => {
@@ -161,6 +163,62 @@ describe("需求筛选和全部账号供给", () => {
     f.control.maxOrders = 0;
     expect((await f.quote()).body.issues.join(" ")).toContain("挂单额度");
     expect(f.writes()).toHaveLength(0);
+  });
+});
+
+describe("自动选价 API", () => {
+  it("只读最新盘口一次，返回最低可用价、行情和金额供用户确认", async () => {
+    const f = fixture();
+    f.control.externalBuys.push({ unitPrice: 110, quantity: 10 });
+    f.control.externalSells.push({ unitPrice: 120, quantity: 10 });
+    const response = await f.autoQuote();
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ unitPrice: 111, quantity: 3, grossGold: 333, feeGold: 16, netGold: 317,
+      pricing: { mode: "auto", highestBid: 110, lowestAsk: 120, minimumPrice: 100 }, issues: [] });
+    expect(response.body.confirmation).toBeDefined(); expect(f.writes()).toHaveLength(0);
+    expect(f.calls.filter((call) => call.path.includes("/order-book?"))).toHaveLength(1);
+  });
+  it("无价差或余额不足时明确拒绝，不创建可确认交易", async () => {
+    const f = fixture(); f.control.externalBuys.push({ unitPrice: 119, quantity: 1 }); f.control.externalSells.push({ unitPrice: 120, quantity: 1 });
+    const gap = await f.autoQuote();
+    expect(gap.status).toBe(409); expect((gap.body as any).error.code).toBe("NO_MATCHING_FISH_PRICE");
+    expect((gap.body as any).error.message).toContain("最高买价 119");
+    f.control.externalBuys[0]!.unitPrice = 1000; f.control.externalSells[0]!.unitPrice = 2000;
+    const funds = await f.autoQuote();
+    expect(funds.status).toBe(409); expect((funds.body as any).error.code).toBe("FISH_AUTO_PRICE_UNAFFORDABLE");
+    expect(app.db.get<{ count: number }>("SELECT count(*) AS count FROM fish_market_transfers WHERE user_id=?", f.user.id)?.count).toBe(0);
+    expect(f.writes()).toHaveLength(0);
+  });
+  it.each([{ quantity: "0" }, { quantity: "1.5" }, { unitPrice: "100" }, { execute: "true" }])("无效参数在读取游戏之前拒绝 %j", async (extra) => {
+    const f = fixture(); expect((await f.autoQuote(extra)).status).toBe(400); expect(f.calls).toHaveLength(0);
+  });
+  it("未登录、未审批和越权账号不能自动选价", async () => {
+    const f = fixture(); const other = app.seedApprovedUser(`auto-price-foreign-${seq}@example.com`); const foreign = app.seedAccount(other.id);
+    expect((await app.get(f.autoPath())).status).toBe(401);
+    expect((await f.autoQuote({ sourceAccountId: foreign })).status).toBe(404);
+    expect((await f.autoQuote({ targetAccountId: foreign })).status).toBe(404);
+    app.repos.users.setStatus(f.user.id, "pending");
+    expect((await f.autoQuote()).status).toBe(403); expect(f.calls).toHaveLength(0);
+  });
+  it("行情变得更便宜也使用已确认价格，不在执行时重新选价", async () => {
+    const f = fixture(); f.control.externalBuys.push({ unitPrice: 110, quantity: 10 }); f.control.externalSells.push({ unitPrice: 120, quantity: 10 });
+    const response = await f.autoQuote(); const id = response.body.confirmation!.id;
+    f.control.externalBuys.length = 0; f.control.externalSells.length = 0;
+    await f.confirm(id); expect((await f.finished(id)).status).toBe("completed");
+    expect(f.writes().map((call) => call.body.limitUnitPrice)).toEqual([111, 111]);
+  });
+  it("行情变化产生竞争买单就停止，不自动改成更高价格", async () => {
+    const f = fixture(); f.control.externalBuys.push({ unitPrice: 110, quantity: 10 }); f.control.externalSells.push({ unitPrice: 120, quantity: 10 });
+    const response = await f.autoQuote(); const id = response.body.confirmation!.id;
+    f.control.externalBuys[0]!.unitPrice = 115;
+    await f.confirm(id); expect((await f.finished(id)).status).toBe("failed"); expect(f.writes()).toHaveLength(0);
+    expect(app.repos.fishTransfers.find(f.user.id, id)!.quote.unitPrice).toBe(111);
+  });
+  it("手动报价也展示盘口价格，仍保留原竞争订单检查", async () => {
+    const f = fixture(); f.control.externalBuys.push({ unitPrice: 110, quantity: 10 }); f.control.externalSells.push({ unitPrice: 120, quantity: 10 });
+    const response = await f.quote();
+    expect(response.body.pricing).toEqual({ mode: "manual", highestBid: 110, lowestAsk: 120, minimumPrice: 100 });
+    expect(response.body.confirmation).toBeUndefined(); expect(response.body.issues.join(" ")).toContain("其他可成交订单");
   });
 });
 

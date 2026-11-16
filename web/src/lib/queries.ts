@@ -23,7 +23,8 @@ export type MasterySupplyPreview = { createdAt: number; target: FishActor; fish:
     reserved: number | null; protected: number | null; canProvide: number | null; issue: string | null }[] };
 export type FishTradeQuote = { createdAt: number; baseUrl: string; target: FishActor; source: FishActor; fish: FishDefinition;
   targetMissing: number; sourceCanProvide: number; quantity: number; unitPrice: number; grossGold: number;
-  feeBasisPoints: number; feeGold: number; netGold: number; issues: string[]; confirmation?: { id: string; expiresAt: number } };
+  feeBasisPoints: number; feeGold: number; netGold: number; issues: string[]; confirmation?: { id: string; expiresAt: number };
+  pricing?: { mode: "auto" | "manual"; highestBid: number | null; lowestAsk: number | null; minimumPrice: number } };
 export type FishTransfer = { id: string; status: "previewed" | "executing" | "completed" | "failed" | "review_required" | "closed";
   expiresAt: number; createdAt: number; updatedAt: number; quote: FishTradeQuote; message: string; buyerOrderId: string | null; sellerOrderId: string | null;
   settlement: { quantity: number; grossGold: number; feeGold: number; netGold: number; tradeIds: string[] } | null };

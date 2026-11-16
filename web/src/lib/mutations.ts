@@ -27,7 +27,15 @@ export function useMasterySupplyPreview() {
   return useMutation({ mutationFn: (input: FishSelection) => api.get<MasterySupplyPreview>("/api/mastery-transfer-preview/supply", input), retry: false });
 }
 export function useFishTradeQuote() {
-  return useMutation({ mutationFn: (input: FishQuoteInput) => api.get<FishTradeQuote>("/api/mastery-transfer-preview/quote", input), retry: false });
+  return useMutation({
+    mutationFn: (input: FishQuoteInput | (Omit<FishQuoteInput, "unitPrice"> & { autoPrice: true })) => {
+      const { targetAccountId, sourceAccountId, biomeId, fishId, quantity } = input;
+      const common = { targetAccountId, sourceAccountId, biomeId, fishId, quantity };
+      return "autoPrice" in input
+        ? api.get<FishTradeQuote>("/api/mastery-transfer-preview/auto-quote", common)
+        : api.get<FishTradeQuote>("/api/mastery-transfer-preview/quote", { ...common, unitPrice: input.unitPrice });
+    }, retry: false,
+  });
 }
 export function useFishTransferAction(action: "confirm" | "check" | "close") {
   const client = useQueryClient();

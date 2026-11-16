@@ -8,7 +8,7 @@
 //    两份由 test/changelog-json.test.ts 钉住不许漂移。
 //
 // 当前版本（与 package.json 的 version 同步维护）
-export const VERSION = "1.24.10";
+export const VERSION = "1.24.11";
 
 export type ChangeKind = "feature" | "improve" | "fix";
 
@@ -23,6 +23,21 @@ export type ChangelogEntry = {
 };
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.24.11",
+    date: "2026-11-16",
+    title: "专精鱼支持自动选价并预览",
+    changes: [
+      {
+        kind: "feature",
+        text: "专精鱼调配新增「自动选价并预览」：按最新最高买价、最低卖价和市场底价选择最低可用整数价，检查所选数量与余额；无价格空档或余额不足时明确提示，不自动缩减数量或发起交易",
+      },
+      {
+        kind: "improve",
+        text: "交易预览显示最高买价、最低卖价、市场最低单价及选价方式。确认后固定使用已预览价格，行情变化不满足条件就停止，不自动重新选价继续交易；原手动填写价格方式保留",
+      },
+    ],
+  },
   {
     version: "1.24.10",
     date: "2026-11-16",

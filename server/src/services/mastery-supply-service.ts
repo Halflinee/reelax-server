@@ -27,6 +27,8 @@ export function marketRead<T>(schema: z.ZodType<T>, raw: unknown): T {
 export type FishActor = { accountId: string; playerId: string; label: string; nickname: string; gold: number; canAccessMarket: boolean };
 export type FishSelection = { targetAccountId: string; biomeId: string; fishId: string };
 export type FishQuoteInput = FishSelection & { sourceAccountId: string; quantity: number; unitPrice: number };
+export type FishAutoQuoteInput = Omit<FishQuoteInput, "unitPrice">;
+export type FishPriceContext = { highestBid: number | null; lowestAsk: number | null; minimumPrice: number };
 export type FishDefinition = { id: string; name: string; biomeId: string; biomeName: string; rarity: string; rarityLabel: string; sellPrice: number };
 export type FishSupplier = { accountId: string; label: string; nickname: string | null; playerId: string | null;
   owned: number | null; reserved: number | null; protected: number | null; canProvide: number | null; issue: string | null };
@@ -36,7 +38,21 @@ export type MasterySupplyPreview = { createdAt: number; target: FishActor; fish:
   market: { minimumUnitPrice: number; maxOrderQuantity: number; feeBasisPoints: number } | null; suppliers: FishSupplier[] };
 export type FishTradeQuote = { createdAt: number; baseUrl: string; target: FishActor; source: FishActor; fish: FishDefinition;
   targetMissing: number; sourceCanProvide: number; quantity: number; unitPrice: number; grossGold: number;
-  feeBasisPoints: number; feeGold: number; netGold: number; issues: string[]; confirmation?: { id: string; expiresAt: number } };
+  feeBasisPoints: number; feeGold: number; netGold: number; issues: string[]; confirmation?: { id: string; expiresAt: number };
+  pricing?: FishPriceContext & { mode: "auto" | "manual" } };
+
+/** 取满足市场底价且严格处于买卖价差内的最低整数价，不调整数量或突破余额。 */
+export function pickFishUnitPrice(pricing: FishPriceContext, quantity: number, gold: number): number {
+  const bidNext = pricing.highestBid === null ? 1n : BigInt(pricing.highestBid) + 1n;
+  const floor = BigInt(pricing.minimumPrice);
+  const lower = bidNext > floor ? bidNext : floor;
+  const upper = pricing.lowestAsk === null ? BigInt(Number.MAX_SAFE_INTEGER) : BigInt(pricing.lowestAsk) - 1n;
+  const summary = `最高买价 ${pricing.highestBid ?? "暂无"}，最低卖价 ${pricing.lowestAsk ?? "暂无"}，市场最低单价 ${pricing.minimumPrice}。`;
+  if (lower > upper) throw new HttpError(409, "NO_MATCHING_FISH_PRICE", `${summary}没有可用的整数价格空档，请稍后重试或换一种鱼。`);
+  const total = lower * BigInt(quantity);
+  if (total > BigInt(gold)) throw new HttpError(409, "FISH_AUTO_PRICE_UNAFFORDABLE", `${summary}最低可用单价为 ${lower}，${quantity} 条共需 ${total} 金币，当前只有 ${gold}；请减少数量后重新选价。`);
+  return Number(lower);
+}
 
 function priceFloor(config: z.infer<typeof fishMarketConfigSchema>, fish: FishDefinition) {
   const configured = config.fishMinimumPrices.find((entry) => entry.biomeId === fish.biomeId && entry.rarity === fish.rarity);
@@ -178,7 +194,7 @@ export class MasterySupplyService {
       market: config ? { minimumUnitPrice: priceFloor(config, selected.fish), maxOrderQuantity: config.maxFishOrderQuantity, feeBasisPoints: config.sellerFeeBasisPoints } : null,
       suppliers: suppliers.sort((a, b) => (b.canProvide ?? -1) - (a.canProvide ?? -1)) };
   }
-  async quote(userId: string, input: FishQuoteInput): Promise<FishTradeQuote> {
+  async quote(userId: string, input: FishQuoteInput | FishAutoQuoteInput): Promise<FishTradeQuote> {
     const sourceAccount = this.deps.accounts.getForUser(input.sourceAccountId, userId);
     const targetAccount = this.deps.accounts.getForUser(input.targetAccountId, userId);
     if (sourceAccount.id === targetAccount.id) throw new HttpError(400, "SAME_ACCOUNT", "需求与供给不能是同一个账号。");
@@ -200,24 +216,33 @@ export class MasterySupplyService {
     const sourceConfig = marketRead(fishMarketConfigSchema, sourceRawConfig);
     const targetConfig = marketRead(fishMarketConfigSchema, targetRawConfig);
     const minimumPrice = Math.max(priceFloor(sourceConfig, supply.fish), priceFloor(targetConfig, supply.fish));
+    const levels = marketRead(fishBookSchema, book);
+    const pricing: FishPriceContext = {
+      highestBid: levels.buyLevels.length ? Math.max(...levels.buyLevels.map((level) => level.unitPrice)) : null,
+      lowestAsk: levels.sellLevels.length ? Math.min(...levels.sellLevels.map((level) => level.unitPrice)) : null,
+      minimumPrice,
+    };
+    const manual = "unitPrice" in input;
+    const unitPrice = manual ? input.unitPrice : pickFishUnitPrice(pricing, input.quantity, supply.target.gold);
     const issues: string[] = [];
     if (!supply.target.canAccessMarket) issues.push("需求账号尚不能使用市场。");
-    if (input.unitPrice < minimumPrice) issues.push(`单价不能低于 ${minimumPrice} 金币。`);
+    if (unitPrice < minimumPrice) issues.push(`单价不能低于 ${minimumPrice} 金币。`);
     if (input.quantity > supply.targetMissing) issues.push("数量超过需求账号当前专精缺口。");
     if (input.quantity > supplier.canProvide) issues.push("数量超过供给账号可出售余量。");
     if (input.quantity > Math.min(sourceConfig.maxFishOrderQuantity, targetConfig.maxFishOrderQuantity)) issues.push("数量超过市场单笔上限。");
     if (sourceConfig.activeOrderCount >= sourceConfig.maxActiveOrdersPerPlayer || targetConfig.activeOrderCount >= targetConfig.maxActiveOrdersPerPlayer) issues.push("至少一个账号的市场挂单额度已满。");
-    const gross = BigInt(input.quantity) * BigInt(input.unitPrice);
+    const gross = BigInt(input.quantity) * BigInt(unitPrice);
     if (gross > BigInt(Number.MAX_SAFE_INTEGER)) throw new HttpError(400, "AMOUNT_TOO_LARGE", "交易总金额过大。");
     const grossGold = Number(gross);
     if (grossGold > supply.target.gold) issues.push("需求账号金币不足。");
-    try { checkFishBook(book, input.unitPrice); } catch (error) {
+    try { checkFishBook(book, unitPrice); } catch (error) {
       if (!(error instanceof HttpError) || error.code !== "COMPETING_FISH_ORDERS") throw error;
       issues.push(error.message);
     }
     const feeGold = Number(gross * BigInt(sourceConfig.sellerFeeBasisPoints) / 10000n);
     return { createdAt: Date.now(), baseUrl: targetAccount.baseUrl, target: supply.target, source, fish: supply.fish,
-      targetMissing: supply.targetMissing, sourceCanProvide: supplier.canProvide, quantity: input.quantity, unitPrice: input.unitPrice,
-      grossGold, feeBasisPoints: sourceConfig.sellerFeeBasisPoints, feeGold, netGold: grossGold - feeGold, issues };
+      targetMissing: supply.targetMissing, sourceCanProvide: supplier.canProvide, quantity: input.quantity, unitPrice,
+      grossGold, feeBasisPoints: sourceConfig.sellerFeeBasisPoints, feeGold, netGold: grossGold - feeGold, issues,
+      pricing: { ...pricing, mode: manual ? "manual" : "auto" } };
   }
 }

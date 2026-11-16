@@ -42,6 +42,14 @@ export default function MasteryTransferPreviewPage() {
   const selectedSource = supply.data?.suppliers.find((entry) => entry.accountId === sourceId);
   function clearQuote() { quote.reset(); confirm.reset(); setOperationId(null); }
   function clearSupply() { supply.reset(); clearQuote(); setSourceId(""); }
+  function previewTrade(autoPrice: boolean) {
+    if (busy || reading || !sourceId || !positive(quantity) || (!autoPrice && !positive(price))) return;
+    clearQuote();
+    const common = { targetAccountId: targetId, sourceAccountId: sourceId, biomeId, fishId, quantity: Number(quantity) };
+    quote.mutate(autoPrice ? { ...common, autoPrice: true } : { ...common, unitPrice: Number(price) }, {
+      onSuccess: (result) => { setPrice(String(result.unitPrice)); setOperationId(result.confirmation?.id ?? null); },
+    });
+  }
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!targetId || !biomeId || !fishId || busy || reading) return;
@@ -107,16 +115,18 @@ export default function MasteryTransferPreviewPage() {
       <p className="text-muted-foreground text-xs">读取于 {new Date(supply.data.createdAt).toLocaleString("zh-CN")}。未预留鱼或金币，确认前会再次检查。</p>
       {selectedSource ? <form className="space-y-3 border-t pt-4" onSubmit={(event) => {
         event.preventDefault();
-        if (busy || reading || !positive(quantity) || !positive(price)) return;
-        clearQuote(); quote.mutate({ targetAccountId: targetId, sourceAccountId: sourceId, biomeId, fishId, quantity: Number(quantity), unitPrice: Number(price) }, {
-          onSuccess: (result) => { setOperationId(result.confirmation?.id ?? null); },
-        });
+        previewTrade(false);
       }}><fieldset disabled={busy || reading} className="space-y-3">
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1.5"><span className="text-sm">交易单价（金币）</span><Input type="number" required min={1} max={Number.MAX_SAFE_INTEGER} step={1} value={price} onChange={(event) => { setPrice(event.target.value); clearQuote(); }} /></label>
           <label className="space-y-1.5"><span className="text-sm">交易数量（条）</span><Input type="number" required min={1} max={Number.MAX_SAFE_INTEGER} step={1} value={quantity} onChange={(event) => { setQuantity(event.target.value); clearQuote(); }} /></label>
         </div>
-        <Button type="submit" variant="outline" disabled={!positive(quantity) || !positive(price) || busy || reading}>{quote.isPending ? "正在检查交易条件…" : "预览这笔交易"}</Button>
+        <div className="flex flex-wrap gap-3">
+          <Button type="button" disabled={!positive(quantity) || busy || reading} onClick={() => previewTrade(true)}>自动选价并预览</Button>
+          <Button type="submit" variant="outline" disabled={!positive(quantity) || !positive(price) || busy || reading}>按填写价格预览</Button>
+        </div>
+        {quote.isPending ? <p className="text-muted-foreground text-xs">正在读取最新盘口并检查交易条件…</p> : null}
+        <p className="text-muted-foreground text-xs">自动选择高于其他买单、低于其他卖单的最低可用价格，并检查当前余额。选价只生成预览，仍需手动确认交易。</p>
       </fieldset></form> : null}
     </CardContent></Card> : null}
     {quote.isError ? <Alert variant="destructive"><AlertDescription>{quote.error.message}</AlertDescription></Alert> : null}
@@ -133,6 +143,10 @@ function QuoteResult({ quote, disabled, onConfirm }: { quote: FishTradeQuote; di
   return <Card><CardHeader><CardTitle>交易预览</CardTitle></CardHeader><CardContent className="space-y-3 text-sm">
     <p>{quote.target.label}（{quote.target.nickname}）挂买单 → {quote.source.label}（{quote.source.nickname}）按价卖出。</p>
     <p>{quote.fish.biomeName} · {quote.fish.name} × {number(quote.quantity)} 条，单价 {number(quote.unitPrice)} 金币。</p>
+    {quote.pricing ? <p className="text-muted-foreground text-xs">
+      {quote.pricing.mode === "auto" ? "已自动选取当前最低可用单价。" : "按填写单价检查。"}
+      当前最高买价：{quote.pricing.highestBid === null ? "暂无买单" : number(quote.pricing.highestBid)}；最低卖价：{quote.pricing.lowestAsk === null ? "暂无卖单" : number(quote.pricing.lowestAsk)}；市场最低单价：{number(quote.pricing.minimumPrice)}。
+    </p> : null}
     <p>需求方最多支付 <strong>{number(quote.grossGold)}</strong> 金币；供给方预计实收 <strong>{number(quote.netGold)}</strong> 金币，预计手续费 {number(quote.feeGold)} 金币。实际按成交记录结算。</p>
     <Alert><IconAlertTriangle /><AlertDescription>这是公开市场撮合，价格和数量不能指定交易对象。即使检查通过，也可能买到或卖给其他玩家。发现竞争订单或结果不明会停止；已挂出的剩余订单需到游戏内核对并取消。</AlertDescription></Alert>
     {quote.issues.map((issue) => <p key={issue} className="text-destructive">{issue}</p>)}
