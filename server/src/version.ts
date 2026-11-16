@@ -8,7 +8,7 @@
 //    两份由 test/changelog-json.test.ts 钉住不许漂移。
 //
 // 当前版本（与 package.json 的 version 同步维护）
-export const VERSION = "1.24.12";
+export const VERSION = "1.24.13";
 
 export type ChangeKind = "feature" | "improve" | "fix";
 
@@ -23,6 +23,21 @@ export type ChangelogEntry = {
 };
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.24.13",
+    date: "2026-11-16",
+    title: "市场买入与按预览价挂卖支持两步手动确认",
+    changes: [
+      {
+        kind: "feature",
+        text: "有预期利润的鱼种可生成最新买入预览，手动确认挂限价买单；核对买足后，再单独确认按已保存价格挂卖。展示实际买入数量、支出、卖出进度及最终税后净利润，不自动调价、补单或卖出部分买入",
+      },
+      {
+        kind: "improve",
+        text: "买卖记录持久保存，固定数量和价格；按确定订单编号核对，丢失响应或重启中断进入待核对且不重复下单。挂卖前复查实际成本、税率及新增可出售库存，同角色未完成买卖与金币、专精鱼交易互相占用",
+      },
+    ],
+  },
   {
     version: "1.24.12",
     date: "2026-11-16",

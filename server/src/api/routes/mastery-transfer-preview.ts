@@ -11,6 +11,7 @@ import { MasterySupplyService } from "../../services/mastery-supply-service.ts";
 import { FishTransferService } from "../../services/fish-transfer-service.ts";
 import type { Repos } from "../../db/repositories/index.ts";
 import { FishMarketScanService } from "../../services/fish-market-scan.ts";
+import { FishMarketDealService } from "../../services/fish-market-deal-service.ts";
 
 const inputSchema = z.object({ sourceAccountId: z.string().min(1).max(64), targetAccountId: z.string().min(1).max(64) }).strict();
 const marketSchema = inputSchema.extend({
@@ -32,9 +33,21 @@ export function createMasteryTransferPreviewRouter(deps: { accounts: AccountServ
   const service = new MasteryTransferPreviewService(deps);
   const supply = new MasterySupplyService(deps);
   const marketScan = new FishMarketScanService(deps);
+  const marketDeals = new FishMarketDealService(deps);
   const transfers = new FishTransferService(deps);
   router.use(requireApproved);
   router.use((_req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
+  const marketPrice = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+  router.post("/market-deals/preview", body(z.object({ accountId: id, fishId: z.string().min(1).max(128), quantity: marketPrice, buyPrice: marketPrice, sellPrice: marketPrice }).strict()), async (req, res) => {
+    res.json(await marketDeals.prepare(currentUserId(req), req.body));
+  });
+  router.get("/market-deals", (req, res) => { res.json(marketDeals.recent(currentUserId(req))); });
+  router.get("/market-deals/:id", (req, res) => { res.json(marketDeals.get(currentUserId(req), req.params.id as string)); });
+  for (const side of ["buy", "sell"] as const) router.post(`/market-deals/:id/${side}`, body(z.object({ confirmed: z.literal(true), acceptPublicMatching: z.literal(true) }).strict()), (req, res) => {
+    res.json(marketDeals.confirm(currentUserId(req), req.params.id as string, side));
+  });
+  router.post("/market-deals/:id/check", body(z.object({}).strict()), async (req, res) => { res.json(await marketDeals.check(currentUserId(req), req.params.id as string)); });
+  router.post("/market-deals/:id/close", body(z.object({ confirmed: z.literal(true), handledInGame: z.literal(true) }).strict()), (req, res) => { res.json(marketDeals.close(currentUserId(req), req.params.id as string)); });
   router.get("/market-scan/options", query(z.object({ accountId: id }).strict()), async (req, res) => {
     res.json(await marketScan.options(currentUserId(req), (res.locals.query as { accountId: string }).accountId));
   });

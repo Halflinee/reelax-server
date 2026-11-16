@@ -11,6 +11,17 @@ export const ACCOUNTS_QUERY_KEY = ["accounts"] as const;
 export const PROXIES_QUERY_KEY = ["proxies"] as const;
 export const MODULES_QUERY_KEY = ["modules"] as const;
 
+export type FishMarketPlan = { createdAt: number; account: FishActor; baseUrl: string; fish: FishDefinition; quantity: number;
+  buyPrice: number; sellPrice: number; maxCostGold: number; feeBasisPoints: number; expectedFeeGold: number; expectedProfitGold: number };
+export type FishMarketDeal = { id: string; status: "previewed" | "buying" | "buy_open" | "bought" | "selling" | "sell_open" | "completed" | "failed" | "review_required" | "closed";
+  createdAt: number; updatedAt: number; expiresAt: number; plan: FishMarketPlan; message: string; buyOrderId: string | null; sellOrderId: string | null;
+  boughtQuantity: number; costGold: number; soldQuantity: number; grossGold: number; feeGold: number; profitGold: number | null; pendingSide: "buy" | "sell" | null };
+export const MARKET_DEALS_QUERY_KEY = ["fish-market-deals"] as const;
+export function useFishMarketDeals() {
+  return useQuery({ queryKey: MARKET_DEALS_QUERY_KEY, queryFn: () => api.get<FishMarketDeal[]>("/api/mastery-transfer-preview/market-deals"), retry: false,
+    refetchInterval: (query) => query.state.data?.some((item) => item.status === "buying" || item.status === "selling") ? 1000 : false });
+}
+
 export type FishMarketOptions = { biomes: { id: string; name: string }[]; fish: { id: string; name: string; biomeId: string; rarityLabel: string }[] };
 export type MarketProfit = { quantity: number; buyPrice: number | null; sellPrice: number | null; costGold: number; grossGold: number;
   feeGold: number; netGold: number; profitGold: number; returnPercent: number; breakEvenPrice: number | null };

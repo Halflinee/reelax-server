@@ -2,6 +2,7 @@ import { BaseRepo, newId, now } from "./base.ts";
 import type { TradePreview } from "../../services/trade-preview-service.ts";
 import { HttpError } from "../../api/server.ts";
 import { randomUUID } from "node:crypto";
+import { ACTIVE_MARKET_DEALS_SQL } from "./fish-market-deals.ts";
 
 export type GoldTransferStatus = "previewed" | "executing" | "completed" | "failed" | "review_required" | "closed";
 export type GoldSettlement = { tradeId: string; grossGold: number; feeGold: number; netGold: number };
@@ -58,7 +59,8 @@ export class GoldTransfersRepo extends BaseRepo {
         AND (payer_player_id IN (?,?) OR receiver_player_id IN (?,?)) LIMIT 1`, operation.preview.baseUrl, payer.playerId, receiver.playerId, payer.playerId, receiver.playerId);
       const fishBusy = this.db.get<{ id: string }>(`SELECT id FROM fish_market_transfers WHERE status IN ('executing','review_required') AND base_url=?
         AND (buyer_player_id IN (?,?) OR seller_player_id IN (?,?)) LIMIT 1`, operation.preview.baseUrl, payer.playerId, receiver.playerId, payer.playerId, receiver.playerId);
-      if (busy || fishBusy) throw new HttpError(409, "TRANSFER_BUSY", "相关账号已有进行中或待核对的交易，请先处理该记录。");
+      const marketBusy = this.db.get(`SELECT id FROM fish_market_deals WHERE base_url=? AND player_id IN (?,?) AND status IN (${ACTIVE_MARKET_DEALS_SQL}) LIMIT 1`, operation.preview.baseUrl, payer.playerId, receiver.playerId);
+      if (busy || fishBusy || marketBusy) throw new HttpError(409, "TRANSFER_BUSY", "相关账号已有进行中或待核对的交易，请先处理该记录。");
       return { operation: this.update(userId, id, "executing", { message: "正在重新核对账号、金额和装备。" }), started: true };
     });
   }

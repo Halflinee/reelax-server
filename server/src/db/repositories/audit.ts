@@ -37,6 +37,9 @@ export const AUDIT_ACTIONS = {
   GOLD_TRANSFER_CLOSED: "account.gold_transfer.closed",
   FISH_TRANSFER_CONFIRMED: "account.fish_transfer.confirmed",
   FISH_TRANSFER_CLOSED: "account.fish_transfer.closed",
+  FISH_MARKET_BUY_CONFIRMED: "account.fish_market.buy_confirmed",
+  FISH_MARKET_SELL_CONFIRMED: "account.fish_market.sell_confirmed",
+  FISH_MARKET_CLOSED: "account.fish_market.closed",
   /** 手动换图（界面上点「切换到某张地图」） */
   ACCOUNT_TRAVEL: "account.travel",
   /** 船队操作：加入 / 离开 / 回应邀请 */

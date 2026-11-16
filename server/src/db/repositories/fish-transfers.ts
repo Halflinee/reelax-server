@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { BaseRepo, newId, now } from "./base.ts";
 import { HttpError } from "../../api/server.ts";
 import type { FishTradeQuote } from "../../services/mastery-supply-service.ts";
+import { ACTIVE_MARKET_DEALS_SQL } from "./fish-market-deals.ts";
 
 export type FishTransferStatus = "previewed" | "executing" | "completed" | "failed" | "review_required" | "closed";
 export type FishSettlement = { quantity: number; grossGold: number; feeGold: number; netGold: number; tradeIds: string[] };
@@ -54,7 +55,9 @@ export class FishTransfersRepo extends BaseRepo {
       const goldBusy = this.db.get<{ id: string }>(`SELECT id FROM gold_transfers WHERE status IN ('executing','review_required')
         AND json_extract(payload_json,'$.preview.baseUrl')=? AND (payer_player_id IN (?,?) OR receiver_player_id IN (?,?)) LIMIT 1`,
         baseUrl, target.playerId, source.playerId, target.playerId, source.playerId);
+      const marketBusy = this.db.get(`SELECT id FROM fish_market_deals WHERE base_url=? AND player_id IN (?,?) AND status IN (${ACTIVE_MARKET_DEALS_SQL}) LIMIT 1`, baseUrl, target.playerId, source.playerId);
       if (fishBusy || goldBusy) throw new HttpError(409, "TRANSFER_BUSY", "相关账号已有进行中或待核对的金币或专精鱼交易，请先处理。");
+      if (marketBusy) throw new HttpError(409, "TRANSFER_BUSY", "相关账号已有进行中或待核对的市场买卖，请先处理。");
       return { operation: this.update(userId, id, "executing", { message: "正在重新核对专精缺口、供给余量和市场盘口。" }), started: true };
     });
   }

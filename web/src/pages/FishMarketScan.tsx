@@ -9,8 +9,9 @@ import { Badge } from "@/components/ui/badge.tsx";
 import { Alert, AlertDescription } from "@/components/ui/alert.tsx";
 import { Input } from "@/components/ui/input.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
+import { FishMarketDeals } from "@/components/domain/FishMarketDeals.tsx";
 import { useAccounts, useFishMarketOptions, type FishMarketRow, type MarketProfit } from "@/lib/queries.ts";
-import { useFishMarketScan, useRefreshMasteryCatalog } from "@/lib/mutations.ts";
+import { useFishMarketScan, useRefreshMasteryCatalog, usePrepareFishMarketDeal } from "@/lib/mutations.ts";
 
 const selectClass = "border-input bg-background h-9 w-full min-w-0 rounded-md border px-3 text-sm disabled:opacity-50";
 const number = (value: number) => value.toLocaleString("zh-CN");
@@ -18,8 +19,9 @@ const integer = (value: string, min: number) => /^\d+$/.test(value) && Number.is
 const opportunity = (row: FishMarketRow) => !row.error && row.waitingWithinLimits && (row.waiting?.profitGold ?? 0) > 0;
 
 export default function FishMarketScanPage() {
-  usePageHeader("市场行情扫描", "查看鱼类买卖盘口与税后利润，只读预览，不会下单");
+  usePageHeader("市场行情与手动买卖", "扫描税后利润，买入与挂卖分两步手动确认");
   const accounts = useAccounts(); const scan = useFishMarketScan(); const refresh = useRefreshMasteryCatalog();
+  const prepare = usePrepareFishMarketDeal(); const dealsSection = useRef<HTMLDivElement>(null);
   const [accountId, setAccountId] = useState(""); const [biomeId, setBiomeId] = useState(""); const [fishId, setFishId] = useState("");
   const [quantity, setQuantity] = useState("1"); const [minimumProfit, setMinimumProfit] = useState("1"); const [onlyProfit, setOnlyProfit] = useState(false);
   const [rows, setRows] = useState<FishMarketRow[]>([]); const [total, setTotal] = useState(0); const [running, setRunning] = useState(false);
@@ -30,7 +32,14 @@ export default function FishMarketScanPage() {
   const options = useFishMarketOptions(accountId);
   const fish = options.data?.fish.filter((entry) => entry.biomeId === biomeId) ?? [];
   const selected = fishId ? fish.filter((entry) => entry.id === fishId) : fish;
-  const busy = running || refresh.isPending;
+  const busy = running || refresh.isPending || prepare.isPending;
+  function previewBuy(row: FishMarketRow) {
+    const result = row.waiting;
+    if (busy || !result || result.buyPrice === null || result.sellPrice === null || !snapshot) return;
+    prepare.mutate({ accountId, fishId: row.fish.id, quantity: result.quantity, buyPrice: result.buyPrice, sellPrice: result.sellPrice }, {
+      onSuccess: () => dealsSection.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    });
+  }
   function clear() { setRows([]); setTotal(0); setSnapshot(null); setError(""); setStopped(false); }
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -84,10 +93,12 @@ export default function FishMarketScanPage() {
       <div className="flex flex-wrap items-center gap-3 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={onlyProfit} onChange={(event) => setOnlyProfit(event.target.checked)} />只看有预期利润且本金、额度允许的鱼种</label>
         <label className="flex items-center gap-2">最低净利润<Input className="w-28" type="number" min={1} max={Number.MAX_SAFE_INTEGER} step={1} value={minimumProfit} onChange={(event) => setMinimumProfit(event.target.value)} /></label></div>
       {!validProfit ? <p className="text-destructive text-sm">最低净利润请输入正整数。</p> : null}
-      <p className="text-muted-foreground text-xs">税费按每条鱼向上取整作保守估算，净利润 = 卖出金额 − 估算税费 − 买入成本。最终按真实分笔成交结算；扫描不生成交易记录。</p>
+      <p className="text-muted-foreground text-xs">税费按每条鱼向上取整作保守估算，净利润 = 卖出金额 − 估算税费 − 买入成本。最终按真实分笔成交结算；扫描不会下单，需另行确认买入和挂卖。</p>
     </CardContent></Card> : null}
     {error ? <Alert variant="destructive"><AlertDescription>{error}。已读取的结果仍保留；未读取部分不代表没有机会。</AlertDescription></Alert> : null}
-    {visible.map((row) => <MarketRow key={row.fish.id} row={row} />)}
+    {prepare.isError ? <Alert variant="destructive"><AlertDescription>{prepare.error.message}</AlertDescription></Alert> : null}
+    <div ref={dealsSection}><FishMarketDeals /></div>
+    {visible.map((row) => <MarketRow key={row.fish.id} row={row} disabled={busy} onPreview={() => previewBuy(row)} />)}
     {rows.length > 0 && !visible.length ? <p className="text-muted-foreground text-sm">已读取的鱼种没有符合当前筛选条件的结果。取消筛选可查看亏损、缺少报价和读取失败的鱼种。</p> : null}
   </div></PageContainer>;
 }
@@ -100,13 +111,14 @@ function ProfitView({ title, result }: { title: string; result: MarketProfit | n
     <p className="text-muted-foreground text-xs">按同样数量卖出，保本单价至少 {result.breakEvenPrice === null ? "无法计算（税率或金额限制）" : `${number(result.breakEvenPrice)} 金币`}。</p>
   </> : <p className="text-muted-foreground">当前条件不足，无法试算。</p>}</div>;
 }
-function MarketRow({ row }: { row: FishMarketRow }) {
+function MarketRow({ row, disabled, onPreview }: { row: FishMarketRow; disabled: boolean; onPreview: () => void }) {
   return <Card><CardHeader><CardTitle className="flex flex-wrap items-center gap-2">{row.fish.name}<Badge variant="secondary">{row.fish.biomeName} · {row.fish.rarityLabel}</Badge>{opportunity(row) ? <Badge>挂单后有预期利润</Badge> : null}</CardTitle>
     <p className="text-muted-foreground text-xs">读取于 {new Date(row.readAt).toLocaleString("zh-CN")} · 税率 {row.feeBasisPoints === null ? "未知" : `${number(row.feeBasisPoints / 100)}%`}</p></CardHeader><CardContent className="space-y-3">
     {row.error ? <p role="alert" className="text-destructive text-sm">读取失败：{row.error}，本行收益未知。</p> : <>
       <p className="text-sm">最高买价 {row.buyLevels[0] ? number(row.buyLevels[0].unitPrice) : "暂无买单"} · 最低卖价 {row.sellLevels[0] ? number(row.sellLevels[0].unitPrice) : "暂无卖单"} · 市场底价 {number(row.minimumPrice!)}</p>
       <div className="grid gap-3 lg:grid-cols-2"><ProfitView title="按现价立即买入再卖出（快照试算）" result={row.immediate} /><ProfitView title="挂单等待：低买高卖（未成交预测）" result={row.waiting} /></div>
       {row.notes.map((note) => <p key={note} className="text-muted-foreground text-sm">{note}</p>)}
+      {opportunity(row) ? <Button type="button" disabled={disabled} onClick={onPreview}>生成买入预览（不下单）</Button> : null}
       <details className="text-sm"><summary className="cursor-pointer">查看买卖盘口（各最多 50 个价格档位）</summary><div className="mt-3 grid gap-3 sm:grid-cols-2">
         <BookLevels title="市场买单" levels={row.buyLevels} /><BookLevels title="市场卖单" levels={row.sellLevels} />
       </div></details>

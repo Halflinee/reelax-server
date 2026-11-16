@@ -14,6 +14,7 @@ import { CdkRepo } from "./cdk.ts";
 import { GoldTransfersRepo } from "./gold-transfers.ts";
 import { FishTransfersRepo } from "./fish-transfers.ts";
 import { GameCatalogsRepo } from "./game-catalogs.ts";
+import { FishMarketDealsRepo } from "./fish-market-deals.ts";
 
 export type Repos = {
   transaction: <T>(fn: () => T) => T;
@@ -31,6 +32,7 @@ export type Repos = {
   goldTransfers: GoldTransfersRepo;
   fishTransfers: FishTransfersRepo;
   gameCatalogs: GameCatalogsRepo;
+  fishMarketDeals: FishMarketDealsRepo;
 };
 
 export function createRepos(db: Db): Repos {
@@ -50,6 +52,7 @@ export function createRepos(db: Db): Repos {
     goldTransfers: new GoldTransfersRepo(db),
     fishTransfers: new FishTransfersRepo(db),
     gameCatalogs: new GameCatalogsRepo(db),
+    fishMarketDeals: new FishMarketDealsRepo(db),
   };
 }
 

@@ -14,7 +14,7 @@ import { MIGRATIONS, MIGRATION_TABLE } from "../src/db/schema.ts";
 import { openDb } from "../src/db/client.ts";
 import { createRepos } from "../src/db/repositories/index.ts";
 
-it.each(["0011_gold_transfers", "0012_fish_market_transfers", "0013_game_catalogs"])("从 %s 之前的数据库升级保留原有用户和账号", (firstNewId) => {
+it.each(["0011_gold_transfers", "0012_fish_market_transfers", "0013_game_catalogs", "0014_fish_market_deals"])("从 %s 之前的数据库升级保留原有用户和账号", (firstNewId) => {
   const db = openDb(":memory:");
   try {
     db.exec(MIGRATION_TABLE);
@@ -31,6 +31,7 @@ it.each(["0011_gold_transfers", "0012_fish_market_transfers", "0013_game_catalog
     expect(db.get("SELECT name FROM sqlite_master WHERE name='gold_transfers'")).toBeDefined();
     expect(db.get("SELECT name FROM sqlite_master WHERE name='fish_market_transfers'")).toBeDefined();
     expect(db.get("SELECT name FROM sqlite_master WHERE name='game_catalogs'")).toBeDefined();
+    expect(db.get("SELECT name FROM sqlite_master WHERE name='fish_market_deals'")).toBeDefined();
   } finally { db.close(); }
 });
 
@@ -55,6 +56,7 @@ const FROZEN_CHECKSUMS: Record<string, string> = {
   "0011_gold_transfers": "fa8b9b12b463127d",
   "0012_fish_market_transfers": "5843f6aba1718b4d",
   "0013_game_catalogs": "f7557d7df8c74f26",
+  "0014_fish_market_deals": "0352ac8974d21a7e",
 };
 
 function checksum(sql: string): string {

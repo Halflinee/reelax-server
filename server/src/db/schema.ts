@@ -374,6 +374,24 @@ CREATE TABLE game_catalogs (
 );
 `,
   },
+  {
+    id: "0014_fish_market_deals",
+    sql: `
+CREATE TABLE fish_market_deals (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  base_url TEXT NOT NULL,
+  player_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX idx_fish_market_deals_user ON fish_market_deals(user_id, created_at DESC);
+CREATE INDEX idx_fish_market_deals_player ON fish_market_deals(base_url, player_id, status);
+`,
+  },
 ];
 
 /** 供 migrate.ts 记录已应用版本 */

@@ -10,7 +10,20 @@ import type { TradePreview, TradePreviewInput } from "./queries.ts";
 import type { MasteryTransferPreview, MasteryMarketPreview } from "./queries.ts";
 import type { GoldTransfer } from "./queries.ts";
 import type { FishSelection, FishQuoteInput, MasterySupplyPreview, FishTradeQuote, FishTransfer } from "./queries.ts";
-import type { FishMarketBatch } from "./queries.ts";
+import { MARKET_DEALS_QUERY_KEY, type FishMarketBatch, type FishMarketDeal } from "./queries.ts";
+
+export function usePrepareFishMarketDeal() {
+  const client = useQueryClient();
+  return useMutation({ mutationFn: (input: { accountId: string; fishId: string; quantity: number; buyPrice: number; sellPrice: number }) =>
+    api.post<FishMarketDeal>("/api/mastery-transfer-preview/market-deals/preview", input), retry: false,
+  onSuccess: () => { toast.success("已生成最新买入预览，请核对账号、数量和金额后确认"); void client.invalidateQueries({ queryKey: MARKET_DEALS_QUERY_KEY }); } });
+}
+export function useFishMarketDealAction(action: "buy" | "sell" | "check" | "close") {
+  const client = useQueryClient();
+  return useMutation({ mutationFn: (id: string) => api.post<FishMarketDeal>(`/api/mastery-transfer-preview/market-deals/${id}/${action}`,
+    action === "check" ? {} : action === "close" ? { confirmed: true, handledInGame: true } : { confirmed: true, acceptPublicMatching: true }), retry: false,
+  onSuccess: () => { void client.invalidateQueries({ queryKey: MARKET_DEALS_QUERY_KEY }); } });
+}
 
 export function useFishMarketScan() {
   return useMutation({ mutationFn: (input: { accountId: string; fishIds: string[]; quantity: number }) =>
